@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -91,5 +90,3 @@ class GmailClient:
     def get_profile(self) -> Dict[str, Any]:
         """Get the Gmail profile of the authenticated user."""
         return self.service.users().getProfile(userId=self._cfg.user_id).execute()
-=======
->>>>>>> parent of bdccb5e (Merge branch 'salvage/client-setup')

@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 from pathlib import Path
 
 from inbox_copilot.gmail.client import GmailClient, GmailClientConfig
@@ -29,5 +28,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-=======
->>>>>>> parent of bdccb5e (Merge branch 'salvage/client-setup')
