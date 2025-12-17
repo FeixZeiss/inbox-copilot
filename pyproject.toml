@@ -1,0 +1,22 @@
+<<<<<<< HEAD
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "inbox-copilot"
+version = "0.1.0"
+description = "Local-first Gmail inbox automation with rule-based and AI-assisted classification"
+requires-python = ">=3.10"
+
+dependencies = [
+    "google-api-python-client",
+    "google-auth",
+    "google-auth-oauthlib",
+    "google-auth-httplib2",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+=======
+>>>>>>> parent of bdccb5e (Merge branch 'salvage/client-setup')

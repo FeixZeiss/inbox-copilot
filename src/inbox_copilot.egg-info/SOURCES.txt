@@ -1,0 +1,16 @@
+README.md
+pyproject.toml
+src/inbox_copilot/__init__.py
+src/inbox_copilot.egg-info/PKG-INFO
+src/inbox_copilot.egg-info/SOURCES.txt
+src/inbox_copilot.egg-info/dependency_links.txt
+src/inbox_copilot.egg-info/requires.txt
+src/inbox_copilot.egg-info/top_level.txt
+src/inbox_copilot/config/settings.py
+src/inbox_copilot/gmail/apply_labels.py
+src/inbox_copilot/gmail/client.py
+src/inbox_copilot/gmail/fetch.py
+src/inbox_copilot/parsing/parser.py
+src/inbox_copilot/pipeline/orchestrator.py
+src/inbox_copilot/rules/rules.py
+src/inbox_copilot/storage/state.py

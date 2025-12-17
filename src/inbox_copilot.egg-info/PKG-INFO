@@ -1,0 +1,9 @@
+Metadata-Version: 2.4
+Name: inbox-copilot
+Version: 0.1.0
+Summary: Local-first Gmail inbox automation with rule-based and AI-assisted classification
+Requires-Python: >=3.10
+Requires-Dist: google-api-python-client
+Requires-Dist: google-auth
+Requires-Dist: google-auth-oauthlib
+Requires-Dist: google-auth-httplib2
