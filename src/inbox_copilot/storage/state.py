@@ -18,3 +18,4 @@ def load_state(path: Path) -> AppState:
 def save_state(path: Path, state: AppState) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(asdict(state), indent=2), encoding="utf-8")
+
