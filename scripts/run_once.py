@@ -1,6 +1,8 @@
 from pathlib import Path
 import os
-
+from pathlib import Path
+from inbox_copilot.storage import state
+from inbox_copilot.storage.state import load_state, save_state
 from inbox_copilot.gmail.client import GmailClient, GmailClientConfig
 
 def load_gmail_config() -> GmailClientConfig:
@@ -23,10 +25,14 @@ def load_gmail_config() -> GmailClientConfig:
     return cfg
 
 def main() -> None:
+    state_path = Path(".state/state.json")
+    state = load_state(state_path)
+
     cfg = load_gmail_config()
 
     client = GmailClient(cfg)
     client.connect()
+
 
     profile = client.get_profile()
     print(f"Connected as: {profile.get('emailAddress')}")
@@ -37,9 +43,15 @@ def main() -> None:
     for mid in ids:
         msg = client.get_message(mid, fmt="metadata")
         headers = {h["name"]: h["value"] for h in msg["payload"].get("headers", [])}
+        state.last_history_id = msg.get("historyId", state.last_history_id)
         print("----")
         print(f"Subject: {headers.get('Subject')}")
         print(f"From:    {headers.get('From')}")
+
+    state.runs += 1
+    save_state(state_path, state)
+    print(f"[state] runs={state.runs} last_history_id={state.last_history_id}")
+
 
 
 if __name__ == "__main__":
