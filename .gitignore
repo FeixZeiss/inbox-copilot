@@ -1,6 +1,9 @@
 # Secrets (absolut notwendig)
 secrets/
 .env
+*.json
+!.example.json
+
 
 # Python basics
 __pycache__/

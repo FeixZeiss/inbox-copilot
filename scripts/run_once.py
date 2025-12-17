@@ -1,13 +1,29 @@
 from pathlib import Path
+import os
 
 from inbox_copilot.gmail.client import GmailClient, GmailClientConfig
 
+def load_gmail_config() -> GmailClientConfig:
+    secrets_dir = os.getenv("INBOX_COPILOT_SECRETS_DIR") or os.getenv("AIVA_SECRETS_DIR")
+    if not secrets_dir:
+        raise RuntimeError("Set INBOX_COPILOT_SECRETS_DIR (or AIVA_SECRETS_DIR).")
+
+    base = Path(secrets_dir)
+
+    cfg = GmailClientConfig(
+        credentials_path=base / "credentials.json",
+        token_path=base / "gmail_token.json",
+        user_id="me",
+    )
+
+    if not cfg.credentials_path.exists():
+        raise FileNotFoundError(f"Missing credentials: {cfg.credentials_path}")
+
+    cfg.token_path.parent.mkdir(parents=True, exist_ok=True)
+    return cfg
 
 def main() -> None:
-    cfg = GmailClientConfig(
-        credentials_path=Path("secrets/credentials.json"),
-        token_path=Path("secrets/token.json"),
-    )
+    cfg = load_gmail_config()
 
     client = GmailClient(cfg)
     client.connect()
