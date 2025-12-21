@@ -1,5 +1,8 @@
 import os
 from pathlib import Path
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # State handling: persistent application state (historyId, run counter)
 from inbox_copilot.storage.state import load_state, save_state
@@ -9,21 +12,13 @@ from inbox_copilot.gmail.client import GmailClient, GmailClientConfig
 
 # Rule system: normalized mail representation + concrete rules
 from inbox_copilot.rules.core import MailItem
-from inbox_copilot.rules.builtins import GoogleSecurityAlertRule, NewsletterRule
+from inbox_copilot.rules.builtins import GoogleSecurityAlertRule, JobAlertRule, NewsletterRule
+
+# Adjust this import to where your Action lives
+from inbox_copilot.rules.actions import Action  # <-- change if needed
 
 
 def load_gmail_config() -> GmailClientConfig:
-    """
-    Load Gmail OAuth configuration from a secrets directory.
-
-    The secrets directory must be provided via environment variable:
-    - INBOX_COPILOT_SECRETS_DIR (preferred)
-    - AIVA_SECRETS_DIR (fallback)
-
-    This function is intentionally strict:
-    - Secrets must exist
-    - Credentials file must be present
-    """
     secrets_dir = os.getenv("INBOX_COPILOT_SECRETS_DIR") or os.getenv("AIVA_SECRETS_DIR")
     if not secrets_dir:
         raise RuntimeError("Set INBOX_COPILOT_SECRETS_DIR (or AIVA_SECRETS_DIR).")
@@ -39,26 +34,24 @@ def load_gmail_config() -> GmailClientConfig:
     if not cfg.credentials_path.exists():
         raise FileNotFoundError(f"Missing credentials: {cfg.credentials_path}")
 
-    # Ensure token directory exists (token is written during OAuth flow)
-    cfg.token_path.parent.mkdir(parents=True, exist_ok=True)
     return cfg
 
 
 def main() -> None:
     # ------------------------------------------------------------------
     # Rule registry
-    # Each rule:
-    # - decides whether a mail matches (match)
-    # - emits one or more Actions (actions)
     # ------------------------------------------------------------------
     rules = [
         GoogleSecurityAlertRule(),
         NewsletterRule(),
+        JobAlertRule(),
     ]
+
+    # Optional: run higher priority rules first if you add "priority"
+    # rules = sorted(rules, key=lambda r: getattr(r, "priority", 0), reverse=True)
 
     # ------------------------------------------------------------------
     # Load persistent application state
-    # Contains last processed Gmail historyId + run counter
     # ------------------------------------------------------------------
     state_path = Path(".state/state.json")
     st = load_state(state_path)
@@ -70,52 +63,80 @@ def main() -> None:
     client = GmailClient(cfg)
     client.connect()
 
-    # Fetch basic profile information (also provides current historyId)
     profile = client.get_profile()
     print(f"Connected as: {profile.get('emailAddress')}")
 
+    # ------------------------------------------------------------------
+    # Local helpers: one evaluation flow for BOTH bootstrap + incremental
+    # ------------------------------------------------------------------
+    def build_mail(mid: str) -> tuple[MailItem, dict]:
+        """Fetch message metadata and normalize into MailItem + headers."""
+        msg = client.get_message(mid, fmt="metadata")
+        headers = {h["name"]: h["value"] for h in msg["payload"].get("headers", [])}
 
-    # INIT: first run evaluates last 7 days via search query (bootstrap),
-    # then stores current historyId as the incremental checkpoint.
-    # This prevents retroactively processing the entire mailbox.
+        mail = MailItem(
+            id=mid,
+            thread_id=msg.get("threadId"),
+            headers=headers,
+            snippet=msg.get("snippet", ""),
+        )
+        return mail, headers
+
+    def evaluate_rules(mail: MailItem) -> list[tuple[str, Action]]:
+        """Return a list of (rule_name, action) pairs for this mail."""
+        planned: list[tuple[str, Action]] = []
+        for rule in rules:
+            if rule.match(mail):
+                for action in rule.actions(mail):
+                    planned.append((rule.name, action))
+        return planned
+
+    def dedupe_actions(planned: list[tuple[str, Action]]) -> list[tuple[str, Action]]:
+        """Remove duplicate actions (same type/label/reason) while keeping order."""
+        seen: set[tuple[str, str | None, str]] = set()
+        out: list[tuple[str, Action]] = []
+        for rule_name, action in planned:
+            key = (action.type, action.label_name, action.reason)
+            if key not in seen:
+                seen.add(key)
+                out.append((rule_name, action))
+        return out
+
+    def print_dry_run(headers: dict, planned: list[tuple[str, Action]]) -> None:
+        """Pretty print planned actions for one mail."""
+        if not planned:
+            return
+
+        print("----")
+        print(f"Subject: {headers.get('Subject', '')}")
+        print(f"From:    {headers.get('From', '')}")
+
+        for rule_name, action in planned:
+            label = action.label_name or ""
+            print(f"[rule:{rule_name}] -> {action.type} {label} ({action.reason})")
+
+    # ------------------------------------------------------------------
+    # BOOTSTRAP (first run only)
+    # ------------------------------------------------------------------
     if st.last_history_id is None:
         bootstrap_ids = client.list_messages(query="in:inbox newer_than:7d", max_results=200)
         print(f"[bootstrap] Found {len(bootstrap_ids)} messages in last 7 days")
 
         for mid in bootstrap_ids:
-            msg = client.get_message(mid, fmt="metadata")
-            headers = {h["name"]: h["value"] for h in msg["payload"].get("headers", [])}
+            mail, headers = build_mail(mid)
+            planned = evaluate_rules(mail)
+            planned = dedupe_actions(planned)
+            print_dry_run(headers, planned)
 
-            mail = MailItem(
-                id=mid,
-                thread_id=msg.get("threadId"),
-                headers=headers,
-                snippet=msg.get("snippet", ""),
-            )
-
-            planned = []  # IMPORTANT: reset per message
-            for r in rules:
-                if r.match(mail):
-                    planned.extend(list(r.actions(mail)))
-
-            for a in planned:
-                print(f"[rule:{r.name}] -> {a.type} {a.label_name or ''} ({a.reason})")
-            print("----")
-            print(f"Subject: {headers.get('Subject')}")
-            print(f"From:    {headers.get('From')}")
-
-    # After bootstrap processing, start incremental from "now"
-    st.last_history_id = profile["historyId"]
-    st.runs += 1
-    save_state(state_path, st)
-    print(f"[state] initialized last_history_id={st.last_history_id} (after bootstrap)")
-    return
-
+        # Set checkpoint AFTER bootstrap
+        st.last_history_id = profile["historyId"]
+        st.runs += 1
+        save_state(state_path, st)
+        print(f"[state] initialized last_history_id={st.last_history_id} (after bootstrap)")
+        return
 
     # ------------------------------------------------------------------
-    # INCREMENTAL MODE:
-    # Fetch only changes since the last stored historyId.
-    # We are specifically interested in newly added messages.
+    # INCREMENTAL MODE
     # ------------------------------------------------------------------
     resp = client.service.users().history().list(
         userId="me",
@@ -125,7 +146,6 @@ def main() -> None:
 
     history = resp.get("history", [])
 
-    # Collect message IDs from the history response
     message_ids: list[str] = []
     for h in history:
         for added in h.get("messagesAdded", []):
@@ -133,54 +153,14 @@ def main() -> None:
 
     print(f"Found {len(message_ids)} new messages since historyId={st.last_history_id}")
 
-    # ------------------------------------------------------------------
-    # Rule evaluation (dry-run)
-    # For each new message:
-    # - fetch metadata
-    # - normalize it into MailItem
-    # - let all rules evaluate it
-    # - collect planned actions
-    # ------------------------------------------------------------------
-    planned = []
+    # Dry-run first 5 during development
+    for mid in message_ids:
+        mail, headers = build_mail(mid)
+        planned = evaluate_rules(mail)
+        planned = dedupe_actions(planned)
+        print_dry_run(headers, planned)
 
-    print(message_ids)
-
-    # Limit to first 5 messages for safety during development
-    for mid in message_ids[:5]:
-        msg = client.get_message(mid, fmt="metadata")
-
-        # Normalize headers into a simple dict for rule matching
-        headers = {
-            h["name"]: h["value"]
-            for h in msg["payload"].get("headers", [])
-        }
-
-        # Unified mail representation passed to all rules
-        mail = MailItem(
-            id=mid,
-            thread_id=msg.get("threadId"),
-            headers=headers,
-            snippet=msg.get("snippet", ""),
-        )
-
-        # Apply all rules to the mail
-        for r in rules:
-            print(r)  # debug: which rule is currently evaluated
-            if r.match(mail):
-                planned.extend(list(r.actions(mail)))
-
-        # Print planned actions (dry-run, nothing is executed yet)
-        for a in planned:
-            print(f"[rule:{r.name}] -> {a.type} {a.label_name or ''} ({a.reason})")
-            print("----")
-            print(f"Subject: {headers.get('Subject')}")
-            print(f"From:    {headers.get('From')}")
-
-    # ------------------------------------------------------------------
-    # Update checkpoint:
-    # We always move the historyId forward to the latest value
-    # AFTER successful processing.
-    # ------------------------------------------------------------------
+    # Update checkpoint AFTER processing
     st.last_history_id = profile["historyId"]
     st.runs += 1
     save_state(state_path, st)
