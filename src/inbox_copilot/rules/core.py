@@ -17,7 +17,7 @@ class ActionType(str, Enum):
     ADD_LABEL = "add_label"
     ARCHIVE = "archive"
     REMOVE_LABEL = "remove_label"
-    ANALYZE = "analyze"
+    ANALYZE_APPLICATION = "analyze_application"
 
 
 @dataclass(frozen=True)

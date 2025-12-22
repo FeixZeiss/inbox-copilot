@@ -143,7 +143,9 @@ def main() -> None:
                 best_actions = list(nofit.actions(mail))
                 best_rule_name = getattr(nofit, "name", nofit.__class__.__name__)
 
-
+            for action in best_actions:
+                label = action.label_name or ""
+                print(f"[bootstrap rule:{best_rule_name}] -> {action.type} {label} ({action.reason})")  
 
             subj = headers.get("Subject", "")
             frm = headers.get("From", "")

@@ -50,6 +50,7 @@ class ArchiveHandler(ActionHandler):
 
 class AnalyzeApplicationHandler(ActionHandler):
     client_ai = OpenAI()
+
     def handle(self, client: GmailClient, action: Action) -> None:
         # Fetch message content (for v1: subject/from/snippet is enough; later use full body)
         msg = client.get_message(action.message_id, fmt="metadata")
@@ -60,55 +61,50 @@ class AnalyzeApplicationHandler(ActionHandler):
 
         # Structured Outputs (JSON Schema) so parsing is reliable
         schema = {
-            "name": "application_summary",
-            "strict": True,
-            "schema": {
-                "type": "object",
-                "additionalProperties": False,
-                "properties": {
-                    "company": {"type": ["string", "null"]},
-                    "role": {"type": ["string", "null"]},
-                    "status": {
-                        "type": "string",
-                        "enum": ["confirmation", "interview", "rejection", "question", "offer", "other"]
-                    },
-                    "action_required": {"type": "boolean"},
-                    "next_step": {"type": ["string", "null"]},
-                    "deadlines": {"type": "array", "items": {"type": "string"}},
-                    "important_links": {"type": "array", "items": {"type": "string"}},
-                    "confidence": {"type": "number", "minimum": 0, "maximum": 1}
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "company": {"type": ["string", "null"]},
+                "role": {"type": ["string", "null"]},
+                "status": {
+                    "type": "string",
+                    "enum": ["confirmation", "interview", "rejection", "question", "offer", "other"],
                 },
-                "required": ["status", "action_required", "deadlines", "important_links", "confidence"]
-            }
+                "action_required": {"type": "boolean"},
+                "next_step": {"type": ["string", "null"]},
+                "deadlines": {"type": "array", "items": {"type": "string"}},
+                "important_links": {"type": "array", "items": {"type": "string"}},
+                "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+            },
+            # IMPORTANT: must include EVERY key in properties
+            "required": [
+                "company",
+                "role",
+                "status",
+                "action_required",
+                "next_step",
+                "deadlines",
+                "important_links",
+                "confidence",
+            ],
         }
 
-        resp = client_ai.responses.create(
-            model="gpt-4.1-mini",  # good/cheap starting point; you can swap later
+
+        resp = self.client_ai.responses.create(
+            model="gpt-4.1-mini",
             input=[
-                {
-                    "role": "system",
-                    "content": (
-                        "You extract structured facts from job application emails. "
-                        "Return ONLY JSON that matches the provided schema."
-                    ),
-                },
-                {
-                    "role": "user",
-                    "content": (
-                        f"Subject: {subject}\n"
-                        f"From: {sender}\n"
-                        f"Snippet: {snippet}\n"
-                        "\nExtract the company, role, application status, next step, deadlines, and links."
-                    ),
-                },
+                {"role": "system", "content": "Return ONLY JSON matching the schema."},
+                {"role": "user", "content": f"Subject: {subject}\nFrom: {sender}\nSnippet: {snippet}\n"},
             ],
             text={
                 "format": {
                     "type": "json_schema",
-                    "json_schema": schema
+                    "name": "application_summary",
+                    "schema": schema,
                 }
             },
         )
+
 
         data = json.loads(resp.output_text)
         print("[APPLICATION ANALYSIS]", action.message_id)

@@ -9,6 +9,7 @@ from inbox_copilot.actions.handlers import (
     PrintHandler,
     AddLabelHandler,
     ArchiveHandler,
+    AnalyzeApplicationHandler,
 )
 from inbox_copilot.gmail.client import GmailClient
 
@@ -50,8 +51,8 @@ def default_executor(*, dry_run: bool = False) -> ActionExecutor:
             ActionType.PRINT: PrintHandler(),
             ActionType.ADD_LABEL: AddLabelHandler(),
             ActionType.ARCHIVE: ArchiveHandler(),
-            ActionType.REMOVE_LABEL: AddLabelHandler(),  # Placeholder, implement RemoveLabelHandler
-            ActionType.ANALYZE: PrintHandler(),          # Placeholder, implement AnalyzeHandler    
+            #ActionType.REMOVE_LABEL: AddLabelHandler(),  # Placeholder, implement RemoveLabelHandler
+            ActionType.ANALYZE_APPLICATION: AnalyzeApplicationHandler(),          # Placeholder, implement AnalyzeHandler    
         },
         dry_run=dry_run,
     )
