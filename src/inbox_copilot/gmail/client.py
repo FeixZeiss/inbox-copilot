@@ -96,6 +96,15 @@ class GmailClient:
     def get_profile(self) -> Dict[str, Any]:
         """Get the Gmail profile of the authenticated user."""
         return self.service.users().getProfile(userId=self._cfg.user_id).execute()
+    
+    def remove_label(self, message_id: str, label_name: str) -> None:
+        label_id = self.get_or_create_label_id(label_name)  # or get_label_id + error if missing
+        self.service.users().messages().modify(
+            userId=self._cfg.user_id,
+            id=message_id,
+            body={"removeLabelIds": [label_id]},
+        ).execute()
+
 
     # -----------------------------
     # Label helpers (name -> id)

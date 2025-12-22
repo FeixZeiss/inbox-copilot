@@ -13,7 +13,7 @@ from inbox_copilot.gmail.client import GmailClient, GmailClientConfig
 
 # Rule system: normalized mail representation + concrete rules
 from inbox_copilot.rules.core import MailItem
-from inbox_copilot.rules.builtins import GoogleSecurityAlertRule, JobAlertRule, NewsletterRule
+from inbox_copilot.rules.builtins import GoogleSecurityAlertRule, JobAlertRule, NewsletterRule, NoFitRule
 
 # Adjust this import to where your Action lives
 from inbox_copilot.rules.actions import Action  # <-- change if needed
@@ -124,18 +124,35 @@ def main() -> None:
         print(f"[bootstrap] Found {len(bootstrap_ids)} messages in last 7 days")
 
         for mid in bootstrap_ids:
+            matched = False
             mail, headers = build_mail(mid)
             planned = evaluate_rules(mail)
             planned = dedupe_actions(planned)
             #print_dry_run(headers, planned)
-            all_actions: list[Action] = []
-            for rule in rules:
+
+            best_actions: list[Action] = []
+            best_rule_name = "NONE"
+
+
+            for rule in sorted(rules, key=lambda r: r.priority, reverse=True):
                 if rule.match(mail):
-                    # Either rule.actions (static) or rule.plan(mail) (dynamic)
-                    all_actions.extend(rule.actions(mail))
+                    best_actions = list(rule.actions(mail))
+                    best_rule_name = getattr(rule, "name", rule.__class__.__name__)
+                    break
+
+            # true fallback only if nothing matched
+            if not best_actions and not matched:
+                best_actions = list(NoFitRule().actions(mail))
+                best_rule_name = getattr(NoFitRule, "name", NoFitRule.__class__.__name__)
+
+            subj = headers.get("Subject", "")
+            frm = headers.get("From", "")
+            print(f"[match] {mid} -> {best_rule_name} | Subject={subj!r} | From={frm!r}")
 
             executor = default_executor(dry_run=False)
-            executor.run(client, all_actions)
+            executor.run(client, best_actions)
+
+
 
         # Set checkpoint AFTER bootstrap
         st.last_history_id = profile["historyId"]

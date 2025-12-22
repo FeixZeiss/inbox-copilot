@@ -16,6 +16,7 @@ class ActionType(str, Enum):
     PRINT = "print"
     ADD_LABEL = "add_label"
     ARCHIVE = "archive"
+    REMOVE_LABEL = "remove_label"
 
 
 @dataclass(frozen=True)

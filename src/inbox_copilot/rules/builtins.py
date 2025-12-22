@@ -62,7 +62,7 @@ class NewsletterRule(BaseRule):
 
 class JobAlertRule(BaseRule):
     name = "job_application"
-    priority = 20
+    priority = 50
     LABEL = "InboxCopilot/Applications"
 
     # Strong phrases (German + English) commonly found in confirmations
@@ -81,7 +81,14 @@ class JobAlertRule(BaseRule):
         "we received your application",
         "application received",
         "your application has been received",
+        "wir bedanken uns für das vertrauen",
+        "wir bedanken uns für deine bewerbung",
+        "wir bedanken uns für ihre bewerbung",
+        "danke für dein interesse",
+        "thank you for your interest",
+        "we appreciate your interest",
     )
+
 
     # General recruiting signals (fallback)
     RECRUITING_WORDS = (
@@ -118,7 +125,7 @@ class JobAlertRule(BaseRule):
         from_ = self.sender(mail)
         snip = self.snippet(mail)
 
-        hay = f"{subj}\n{from_}\n{snip}"
+        hay = f"{subj}\n{from_}\n{snip}".lower()
 
         # 1) Very strong confirmation phrases
         if self.contains_any(hay, self.CONFIRM_PHRASES):
@@ -133,6 +140,9 @@ class JobAlertRule(BaseRule):
             return True
         if re.search(r"\breceiv\w*\b.*\bapplicat\w*\b", hay, flags=re.IGNORECASE):
             return True
+        if re.search(r"\bbedank\w*\b.*\bbewerb\w*\b", hay, flags=re.IGNORECASE):
+            return True
+
 
         return False
 
@@ -142,4 +152,20 @@ class JobAlertRule(BaseRule):
             message_id=mail.id,
             label_name=self.LABEL,
             reason="Job application confirmation / recruiting mail detected",
+        )
+
+class NoFitRule(BaseRule):
+    name = "no_Fit"
+    priority = 0
+    LABEL = "InboxCopilot/No Fit"
+
+    def match(self, mail: MailItem) -> bool:
+        return True
+
+    def actions(self, mail: MailItem) -> Iterable[Action]:
+        yield Action(
+            type="add_label",
+            message_id=mail.id,
+            label_name=self.LABEL,
+            reason="Mail did not match any other rule",
         )
