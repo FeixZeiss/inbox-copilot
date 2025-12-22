@@ -20,7 +20,6 @@ class ActionExecutor:
     continue_on_error: bool = True
 
     def run(self, client: GmailClient, actions: list[Action]) -> None:
-        print("isRunning")
         for action in actions:
             handler = self.handlers.get(action.type)
             if not handler:

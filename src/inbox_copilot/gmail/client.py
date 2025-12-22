@@ -10,8 +10,8 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 
 
-# Readonly is enough for fetching and labeling later can be upgraded to modify.
-SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
+# Needs modify to add/remove labels (messages.modify)
+SCOPES = ["https://www.googleapis.com/auth/gmail.modify"]
 
 
 @dataclass(frozen=True)
@@ -29,6 +29,9 @@ class GmailClient:
         self._cfg = cfg
         self._creds: Optional[Credentials] = None
         self._service = None
+
+        # Cache label name -> label id to avoid repeated API calls
+        self._label_cache: Dict[str, str] = {}
 
     def connect(self) -> None:
         """Create an authenticated Gmail API service client."""
@@ -54,6 +57,9 @@ class GmailClient:
 
         self._creds = creds
         self._service = build("gmail", "v1", credentials=creds)
+
+        # Clear label cache after (re)connect to avoid stale mappings
+        self._label_cache.clear()
 
     @property
     def service(self):
@@ -90,3 +96,56 @@ class GmailClient:
     def get_profile(self) -> Dict[str, Any]:
         """Get the Gmail profile of the authenticated user."""
         return self.service.users().getProfile(userId=self._cfg.user_id).execute()
+
+    # -----------------------------
+    # Label helpers (name -> id)
+    # -----------------------------
+
+    def _refresh_label_cache(self) -> None:
+        """Fetch all labels once and cache them by name."""
+        resp = self.service.users().labels().list(userId=self._cfg.user_id).execute()
+        labels = resp.get("labels", [])
+        self._label_cache = {lbl["name"]: lbl["id"] for lbl in labels}
+
+    def _get_label_id(self, label_name: str) -> Optional[str]:
+        """Return label id if known, otherwise None."""
+        if not self._label_cache:
+            self._refresh_label_cache()
+        return self._label_cache.get(label_name)
+
+    def _create_label(self, label_name: str) -> str:
+        """
+        Create a Gmail label and return its id.
+        Gmail supports hierarchical names like 'Parent/Child'.
+        """
+        body = {
+            "name": label_name,
+            "labelListVisibility": "labelShow",
+            "messageListVisibility": "show",
+        }
+        created = (
+            self.service.users()
+            .labels()
+            .create(userId=self._cfg.user_id, body=body)
+            .execute()
+        )
+        label_id = created["id"]
+        self._label_cache[label_name] = label_id
+        return label_id
+
+    def get_or_create_label_id(self, label_name: str) -> str:
+        """Resolve a label name to id, creating the label if it does not exist."""
+        label_id = self._get_label_id(label_name)
+        if label_id:
+            return label_id
+        # Not found -> create (will work for names like InboxCopilot/Applications)
+        return self._create_label(label_name)
+
+    def add_label(self, message_id: str, label_name: str) -> None:
+        """Add a label (by name) to a message."""
+        label_id = self.get_or_create_label_id(label_name)
+        self.service.users().messages().modify(
+            userId=self._cfg.user_id,
+            id=message_id,
+            body={"addLabelIds": [label_id]},
+        ).execute()
