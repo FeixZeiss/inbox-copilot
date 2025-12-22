@@ -9,6 +9,7 @@ from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 
+from inbox_copilot.gmail.LabelColors import LABEL_COLORS 
 
 # Needs modify to add/remove labels (messages.modify)
 SCOPES = ["https://www.googleapis.com/auth/gmail.modify"]
@@ -121,34 +122,48 @@ class GmailClient:
         if not self._label_cache:
             self._refresh_label_cache()
         return self._label_cache.get(label_name)
+    
+    def get_or_create_label_id(self, label_name: str) -> str:
+        label_id = self._get_label_id(label_name)
+        if label_id:
+            self._update_label_color(label_id, label_name)
+            return label_id
+        return self._create_label(label_name)
+
 
     def _create_label(self, label_name: str) -> str:
-        """
-        Create a Gmail label and return its id.
-        Gmail supports hierarchical names like 'Parent/Child'.
-        """
         body = {
             "name": label_name,
             "labelListVisibility": "labelShow",
             "messageListVisibility": "show",
         }
+
+        # Apply color if known
+        color = LABEL_COLORS.get(label_name)
+        if color:
+            body["color"] = color
+
         created = (
             self.service.users()
             .labels()
             .create(userId=self._cfg.user_id, body=body)
             .execute()
         )
+
         label_id = created["id"]
         self._label_cache[label_name] = label_id
         return label_id
+    
+    def _update_label_color(self, label_id: str, label_name: str) -> None:
+        color = LABEL_COLORS.get(label_name)
+        if not color:
+            return
 
-    def get_or_create_label_id(self, label_name: str) -> str:
-        """Resolve a label name to id, creating the label if it does not exist."""
-        label_id = self._get_label_id(label_name)
-        if label_id:
-            return label_id
-        # Not found -> create (will work for names like InboxCopilot/Applications)
-        return self._create_label(label_name)
+        self.service.users().labels().patch(
+            userId=self._cfg.user_id,
+            id=label_id,
+            body={"color": color},
+        ).execute()
 
     def add_label(self, message_id: str, label_name: str) -> None:
         """Add a label (by name) to a message."""

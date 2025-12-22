@@ -6,8 +6,7 @@ from dataclasses import dataclass
 from typing import Iterable, Sequence
 
 # Adjust imports to your project
-from inbox_copilot.rules.core import MailItem
-#from inbox_copilot.rules.actions import Action  # or wherever Action lives
+from inbox_copilot.rules.core import MailItem, Action
 
 
 @dataclass(frozen=True)

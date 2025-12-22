@@ -50,6 +50,8 @@ def default_executor(*, dry_run: bool = False) -> ActionExecutor:
             ActionType.PRINT: PrintHandler(),
             ActionType.ADD_LABEL: AddLabelHandler(),
             ActionType.ARCHIVE: ArchiveHandler(),
+            ActionType.REMOVE_LABEL: AddLabelHandler(),  # Placeholder, implement RemoveLabelHandler
+            ActionType.ANALYZE: PrintHandler(),          # Placeholder, implement AnalyzeHandler    
         },
         dry_run=dry_run,
     )

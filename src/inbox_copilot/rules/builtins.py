@@ -31,7 +31,7 @@ class GoogleSecurityAlertRule(BaseRule):
         yield Action(
             type="add_label",
             message_id=mail.id,
-            label_name="InboxCopilot/Security",
+            label_name="Security",
             reason="Google security-related sender/subject",
         )
 
@@ -56,14 +56,13 @@ class NewsletterRule(BaseRule):
         yield Action(
             type="add_label",
             message_id=mail.id,
-            label_name="InboxCopilot/Newsletter",
+            label_name="Newsletter",
             reason="Newsletter heuristic matched",
         )
 
 class JobAlertRule(BaseRule):
     name = "job_application"
     priority = 50
-    LABEL = "InboxCopilot/Applications"
 
     # Strong phrases (German + English) commonly found in confirmations
     CONFIRM_PHRASES = (
@@ -150,14 +149,17 @@ class JobAlertRule(BaseRule):
         yield Action(
             type="add_label",
             message_id=mail.id,
-            label_name=self.LABEL,
+            label_name="Applications",
             reason="Job application confirmation / recruiting mail detected",
+        )
+        yield Action(
+            type="analyze_application", 
+            message_id=mail.id, 
+            reason="Extract application status & next steps",
         )
 
 class NoFitRule(BaseRule):
-    name = "no_Fit"
     priority = 0
-    LABEL = "InboxCopilot/No Fit"
 
     def match(self, mail: MailItem) -> bool:
         return True
@@ -166,6 +168,6 @@ class NoFitRule(BaseRule):
         yield Action(
             type="add_label",
             message_id=mail.id,
-            label_name=self.LABEL,
+            label_name="NoFit",
             reason="Mail did not match any other rule",
         )

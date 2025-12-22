@@ -124,7 +124,6 @@ def main() -> None:
         print(f"[bootstrap] Found {len(bootstrap_ids)} messages in last 7 days")
 
         for mid in bootstrap_ids:
-            matched = False
             mail, headers = build_mail(mid)
             planned = evaluate_rules(mail)
             planned = dedupe_actions(planned)
@@ -133,17 +132,18 @@ def main() -> None:
             best_actions: list[Action] = []
             best_rule_name = "NONE"
 
-
             for rule in sorted(rules, key=lambda r: r.priority, reverse=True):
                 if rule.match(mail):
                     best_actions = list(rule.actions(mail))
                     best_rule_name = getattr(rule, "name", rule.__class__.__name__)
                     break
 
-            # true fallback only if nothing matched
-            if not best_actions and not matched:
-                best_actions = list(NoFitRule().actions(mail))
-                best_rule_name = getattr(NoFitRule, "name", NoFitRule.__class__.__name__)
+            if not best_actions:
+                nofit = NoFitRule()
+                best_actions = list(nofit.actions(mail))
+                best_rule_name = getattr(nofit, "name", nofit.__class__.__name__)
+
+
 
             subj = headers.get("Subject", "")
             frm = headers.get("From", "")
