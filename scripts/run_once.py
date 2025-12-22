@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # State handling: persistent application state (historyId, run counter)
+from inbox_copilot.actions.executor import default_executor
 from inbox_copilot.storage.state import load_state, save_state
 
 # Gmail API wrapper and config
@@ -126,7 +127,15 @@ def main() -> None:
             mail, headers = build_mail(mid)
             planned = evaluate_rules(mail)
             planned = dedupe_actions(planned)
-            print_dry_run(headers, planned)
+            #print_dry_run(headers, planned)
+            all_actions: list[Action] = []
+            for rule in rules:
+                if rule.match(mail):
+                    # Either rule.actions (static) or rule.plan(mail) (dynamic)
+                    all_actions.extend(rule.actions(mail))
+
+            executor = default_executor(dry_run=False)
+            executor.run(client, all_actions)
 
         # Set checkpoint AFTER bootstrap
         st.last_history_id = profile["historyId"]
@@ -158,7 +167,17 @@ def main() -> None:
         mail, headers = build_mail(mid)
         planned = evaluate_rules(mail)
         planned = dedupe_actions(planned)
-        print_dry_run(headers, planned)
+        #print_dry_run(headers, planned)
+        
+        all_actions: list[Action] = []
+        for rule in rules:
+            if rule.match(mail):
+                # Either rule.actions (static) or rule.plan(mail) (dynamic)
+                all_actions.extend(rule.actions(mail))
+
+        executor = default_executor(dry_run=False)
+        executor.run(client, all_actions)
+
 
     # Update checkpoint AFTER processing
     st.last_history_id = profile["historyId"]

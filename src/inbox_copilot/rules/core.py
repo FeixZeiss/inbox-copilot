@@ -1,6 +1,7 @@
 from __future__ import annotations
 from dataclasses import dataclass
 from typing import Iterable, Protocol, Optional, Literal, Dict
+from enum import Enum
 
 
 @dataclass(frozen=True)
@@ -11,7 +12,10 @@ class MailItem:
     snippet: str
 
 
-ActionType = Literal["add_label", "archive"]
+class ActionType(str, Enum):
+    PRINT = "print"
+    ADD_LABEL = "add_label"
+    ARCHIVE = "archive"
 
 
 @dataclass(frozen=True)
