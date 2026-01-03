@@ -36,7 +36,7 @@ inbox-copilot/
 ├── setup.sh                 # Project environment setup
 ├── .env                     # Optional: API keys etc.
 └── README.md
-
+```
 ## Requirements
 - Linux or WSL
 - Python 3.10+
