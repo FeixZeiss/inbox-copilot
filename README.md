@@ -52,11 +52,12 @@ inbox-copilot/
 ```bash
 inbox-copilot/secrets/credentials.json
 ```
+
 ⚠️ Never commit credentials.json or gmail_token.json
 
 ##🚀 Installation
-1) Conda environment (recommended)
-2) ```bash
+Conda environment (recommended)
+```bash
 conda create -n inbox-copilot python=3.11
 conda activate inbox-copilot
 pip install -r requirements.txt
