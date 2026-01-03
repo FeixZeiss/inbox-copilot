@@ -115,9 +115,8 @@ python scripts/run_once.py
 - Web dashboard
 
 ## 🧠 Philosophy
-```text
-Inbox Zero — but with control.
-Automation without black boxes. Rules over magic.
-```
+- Inbox Zero — but with control.
+- Automation without black boxes. Rules over magic.
+
 ## 📄 License
 Private / educational project
