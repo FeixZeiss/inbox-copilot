@@ -150,7 +150,6 @@ def main() -> None:
         message_ids: list[str] = []
         page_token: str | None = None
         last_resp: dict | None = None
-        print("in incremtanl")
 
         while True:
             resp = client.service.users().history().list(
