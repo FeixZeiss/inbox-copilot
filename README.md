@@ -1,4 +1,4 @@
-# inbox-copilot 📬🤖
+# inbox-copilot 
 
 **inbox-copilot** is a local Python tool that analyzes, classifies, and processes your Gmail inbox  
 (e.g. job applications, newsletters, security alerts).
@@ -7,18 +7,18 @@ The project uses the **Gmail API**, a **rule-based engine**, and a **persistent 
 
 ---
 
-## ✨ Features
+## Features
 
-- 🔐 OAuth2 authentication with the Gmail API
-- 📥 Read Gmail messages (metadata / full)
-- 🧠 Rule-based classification system (applications, newsletters, security alerts, etc.)
-- 💾 Persistent state (e.g. historyId, last processed messages)
-- 🧪 Clean project architecture (CLI scripts, core logic, storage)
-- 🐍 Designed for local execution with Conda or virtual environments
+- OAuth2 authentication with the Gmail API
+- Read Gmail messages (metadata / full)
+- Rule-based classification system (applications, newsletters, security alerts, etc.)
+- Persistent state (e.g. historyId, last processed messages)
+- Clean project architecture (CLI scripts, core logic, storage)
+- Designed for local execution with Conda or virtual environments
 
 ---
 
-## 📁 Project Structure
+## Project Structure
 
 ```text
 inbox-copilot/
@@ -43,7 +43,7 @@ inbox-copilot/
 - Google Account with GMailAPI enabled
 - Conda or virtualenv
 
-## 🔑 Gmail API Setup
+## Gmail API Setup
 1. Create a Google Cloud project
 2. Enable the Gmail API
 3. Create an OAuth client (Desktop application)
@@ -55,14 +55,14 @@ inbox-copilot/secrets/credentials.json
 
 ⚠️ Never commit credentials.json or gmail_token.json
 
-## 🚀 Installation
+## Installation
 Conda environment (recommended)
 ```bash
 conda create -n inbox-copilot python=3.11
 conda activate inbox-copilot
 pip install -r requirements.txt
 ```
-## ⚙️ Environment Setup
+## Environment Setup
 
 The project relies on environment variables, which are initialized via setup.sh.
 ```bash
@@ -104,12 +104,12 @@ python scripts/run_once.py
 - The error is handled and the message is skipped
 - Resetting the state may help in rare cases
 
-## 🛡️ Security
+## Security
 - Secrets are stored locally only
 - No cloud backend besides Gmail API
 - Tokens can be revoked at any time in Google Account settings
 
-## 🧩 Future Ideas
+## Future Ideas
 - IMAP fallback
 - LLM-assisted classification
 - Web dashboard
