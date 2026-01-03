@@ -17,6 +17,7 @@ from inbox_copilot.rules.builtins import GoogleSecurityAlertRule, JobAlertRule, 
 
 # Adjust this import to where your Action lives
 from inbox_copilot.rules.actions import Action  # <-- change if needed
+from googleapiclient.errors import HttpError
 
 
 def load_gmail_config() -> GmailClientConfig:
@@ -117,7 +118,12 @@ def main() -> None:
             print(f"[rule:{rule_name}] -> {action.type} {label} ({action.reason})")
 
     def process_message(mid: str) -> None:
-        mail, headers = build_mail(mid)
+        try:
+            mail, headers = build_mail(mid)
+        except KeyError as e:
+            # Message was deleted/moved between list/history and fetch
+            print(f"[SKIP] {e}")
+            return
 
         best_actions: list[Action] = []
         best_rule_name = "NONE"
@@ -144,6 +150,7 @@ def main() -> None:
         message_ids: list[str] = []
         page_token: str | None = None
         last_resp: dict | None = None
+        print("in incremtanl")
 
         while True:
             resp = client.service.users().history().list(
@@ -180,7 +187,7 @@ def main() -> None:
 
 
     def get_message_ids_bootstrap() -> list[str]:
-        return client.list_messages(query="in:inbox newer_than:7d", max_results=200)
+        return client.list_messages(query="in:inbox newer_than:60d", max_results=200)
 
     if st.last_history_id is None:
         message_ids = get_message_ids_bootstrap()
@@ -197,8 +204,15 @@ def main() -> None:
         return
 
     # incremental
-    message_ids, new_history_id = get_message_ids_incremental(st.last_history_id)
-    print(f"Found {len(message_ids)} new inbox messages since historyId={st.last_history_id}")
+    try:
+        message_ids, new_history_id = get_message_ids_incremental(st.last_history_id)
+    except HttpError as e:
+        # If startHistoryId is invalid/too old -> resync
+        print(f"[RESYNC] history list failed, falling back to last 7 days. Error: {e}")
+        message_ids = client.list_messages(query="in:inbox newer_than:7d", max_results=500)
+        new_history_id = client.get_profile()["historyId"]
+        for mid in message_ids:
+            process_message(mid)
 
     for mid in message_ids:
         process_message(mid)
