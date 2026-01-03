@@ -43,7 +43,7 @@ inbox-copilot/
 - Google Account with GMailAPI enabled
 - Conda or virtualenv
 
-##🔑 Gmail API Setup
+## 🔑 Gmail API Setup
 1. Create a Google Cloud project
 2. Enable the Gmail API
 3. Create an OAuth client (Desktop application)
