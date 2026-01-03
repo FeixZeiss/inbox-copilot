@@ -55,6 +55,25 @@ inbox-copilot/secrets/credentials.json
 
 ⚠️ Never commit credentials.json or gmail_token.json
 
+## OpenAI / ChatGPT API Setup (optional)
+If you use features that call OpenAI (e.g. LLM-based classification), you need an API key.
+1. Create an API key in your OpenAI account
+2. Add it to a local .env file in the project root:
+
+Create/edit:
+```bash
+nano .env
+```
+
+Add:
+```bash
+OPENAI_API_KEY="YOUR_OPENAI_API_KEY_HERE"
+```
+
+Notes:
+- Keep the quotes if your shell/editor adds special characters.
+- Never commit .env (should be in .gitignore).
+
 ## Installation
 Conda environment (recommended)
 ```bash
