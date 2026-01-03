@@ -55,7 +55,7 @@ inbox-copilot/secrets/credentials.json
 
 ⚠️ Never commit credentials.json or gmail_token.json
 
-##🚀 Installation
+## 🚀 Installation
 Conda environment (recommended)
 ```bash
 conda create -n inbox-copilot python=3.11
@@ -91,7 +91,7 @@ On the first run:
 -Processing state is persisted
 -Deleted or unavailable messages are skipped safely
 
-##🧯 Troubleshooting
+## 🧯 Troubleshooting
 ❌ invalid_grant: Token has been expired or revoked
 ```bash
 rm secrets/gmail_token.json
@@ -119,5 +119,5 @@ python scripts/run_once.py
 Inbox Zero — but with control.
 Automation without black boxes. Rules over magic.
 ```
-##📄 License
+## 📄 License
 Private / educational project
