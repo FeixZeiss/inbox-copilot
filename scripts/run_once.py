@@ -116,90 +116,94 @@ def main() -> None:
             label = action.label_name or ""
             print(f"[rule:{rule_name}] -> {action.type} {label} ({action.reason})")
 
-    # ------------------------------------------------------------------
-    # BOOTSTRAP (first run only)
-    # ------------------------------------------------------------------
-    if st.last_history_id is None:
-        bootstrap_ids = client.list_messages(query="in:inbox newer_than:7d", max_results=200)
-        print(f"[bootstrap] Found {len(bootstrap_ids)} messages in last 7 days")
-
-        for mid in bootstrap_ids:
-            mail, headers = build_mail(mid)
-            planned = evaluate_rules(mail)
-            planned = dedupe_actions(planned)
-            #print_dry_run(headers, planned)
-
-            best_actions: list[Action] = []
-            best_rule_name = "NONE"
-
-            for rule in sorted(rules, key=lambda r: r.priority, reverse=True):
-                if rule.match(mail):
-                    best_actions = list(rule.actions(mail))
-                    best_rule_name = getattr(rule, "name", rule.__class__.__name__)
-                    break
-
-            if not best_actions:
-                nofit = NoFitRule()
-                best_actions = list(nofit.actions(mail))
-                best_rule_name = getattr(nofit, "name", nofit.__class__.__name__)
-
-            for action in best_actions:
-                label = action.label_name or ""
-                print(f"[bootstrap rule:{best_rule_name}] -> {action.type} {label} ({action.reason})")  
-
-            subj = headers.get("Subject", "")
-            frm = headers.get("From", "")
-            print(f"[match] {mid} -> {best_rule_name} | Subject={subj!r} | From={frm!r}")
-
-            executor = default_executor(dry_run=False)
-            executor.run(client, best_actions)
-
-
-
-        # Set checkpoint AFTER bootstrap
-        st.last_history_id = profile["historyId"]
-        st.runs += 1
-        save_state(state_path, st)
-        print(f"[state] initialized last_history_id={st.last_history_id} (after bootstrap)")
-        return
-
-    # ------------------------------------------------------------------
-    # INCREMENTAL MODE
-    # ------------------------------------------------------------------
-    resp = client.service.users().history().list(
-        userId="me",
-        startHistoryId=st.last_history_id,
-        historyTypes=["messageAdded"],
-    ).execute()
-
-    history = resp.get("history", [])
-
-    message_ids: list[str] = []
-    for h in history:
-        for added in h.get("messagesAdded", []):
-            message_ids.append(added["message"]["id"])
-
-    print(f"Found {len(message_ids)} new messages since historyId={st.last_history_id}")
-
-    # Dry-run first 5 during development
-    for mid in message_ids:
+    def process_message(mid: str) -> None:
         mail, headers = build_mail(mid)
-        planned = evaluate_rules(mail)
-        planned = dedupe_actions(planned)
-        #print_dry_run(headers, planned)
-        
-        all_actions: list[Action] = []
-        for rule in rules:
+
+        best_actions: list[Action] = []
+        best_rule_name = "NONE"
+
+        for rule in sorted(rules, key=lambda r: r.priority, reverse=True):
             if rule.match(mail):
-                # Either rule.actions (static) or rule.plan(mail) (dynamic)
-                all_actions.extend(rule.actions(mail))
+                best_actions = list(rule.actions(mail))
+                best_rule_name = getattr(rule, "name", rule.__class__.__name__)
+                break
+
+        if not best_actions:
+            nofit = NoFitRule()
+            best_actions = list(nofit.actions(mail))
+            best_rule_name = getattr(nofit, "name", nofit.__class__.__name__)
+
+        subj = headers.get("Subject", "")
+        frm = headers.get("From", "")
+        print(f"[match] {mid} -> {best_rule_name} | Subject={subj!r} | From={frm!r}")
 
         executor = default_executor(dry_run=False)
-        executor.run(client, all_actions)
+        executor.run(client, best_actions)
+
+    def get_message_ids_incremental(start_history_id: str) -> tuple[list[str], str]:
+        message_ids: list[str] = []
+        page_token: str | None = None
+        last_resp: dict | None = None
+
+        while True:
+            resp = client.service.users().history().list(
+                userId="me",
+                startHistoryId=start_history_id,
+                historyTypes=["messageAdded", "labelAdded"],
+                labelId="INBOX",
+                pageToken=page_token,
+                maxResults=500,
+            ).execute()
+            last_resp = resp
+
+            for h in resp.get("history", []):
+                for added in h.get("messagesAdded", []):
+                    message_ids.append(added["message"]["id"])
+                for la in h.get("labelsAdded", []):
+                    msg = la.get("message")
+                    if msg and "id" in msg:
+                        message_ids.append(msg["id"])
+
+            page_token = resp.get("nextPageToken")
+            if not page_token:
+                break
+
+        # dedupe in-order
+        seen = set()
+        message_ids = [mid for mid in message_ids if not (mid in seen or seen.add(mid))]
+
+        # “neuer checkpoint”: am besten aus profile frisch holen (oder last_resp["historyId"] wenn vorhanden)
+        latest_profile = client.get_profile()
+        new_history_id = latest_profile["historyId"]
+
+        return message_ids, new_history_id
 
 
-    # Update checkpoint AFTER processing
-    st.last_history_id = profile["historyId"]
+    def get_message_ids_bootstrap() -> list[str]:
+        return client.list_messages(query="in:inbox newer_than:7d", max_results=200)
+
+    if st.last_history_id is None:
+        message_ids = get_message_ids_bootstrap()
+        print(f"[bootstrap] Found {len(message_ids)} messages in last 7 days")
+
+        for mid in message_ids:
+            process_message(mid)
+
+        latest_profile = client.get_profile()
+        st.last_history_id = latest_profile["historyId"]
+        st.runs += 1
+        save_state(state_path, st)
+        print(f"[state] initialized last_history_id={st.last_history_id}")
+        return
+
+    # incremental
+    message_ids, new_history_id = get_message_ids_incremental(st.last_history_id)
+    print(f"Found {len(message_ids)} new inbox messages since historyId={st.last_history_id}")
+
+    for mid in message_ids:
+        process_message(mid)
+
+    st.last_history_id = new_history_id
     st.runs += 1
     save_state(state_path, st)
     print(f"[state] runs={st.runs} last_history_id={st.last_history_id}")

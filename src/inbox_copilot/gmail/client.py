@@ -8,6 +8,7 @@ from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
 
 from inbox_copilot.gmail.LabelColors import LABEL_COLORS 
 
@@ -87,12 +88,18 @@ class GmailClient:
         Fetch a full message resource.
         fmt: 'full' | 'metadata' | 'minimal' | 'raw'
         """
-        return (
-            self.service.users()
-            .messages()
-            .get(userId=self._cfg.user_id, id=message_id, format=fmt)
-            .execute()
-        )
+        try:
+            return (
+                self.service.users()
+                .messages()
+                .get(userId=self._cfg.user_id, id=message_id, format=fmt)
+                .execute()
+            )
+        except HttpError as e:
+            # Skip messages that no longer exist (deleted/moved) for this mailbox
+            if getattr(e, "resp", None) and e.resp.status == 404:
+                raise KeyError(f"Message not found: {message_id}") from e
+        raise
 
     def get_profile(self) -> Dict[str, Any]:
         """Get the Gmail profile of the authenticated user."""
