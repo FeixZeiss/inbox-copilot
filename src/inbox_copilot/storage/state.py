@@ -6,7 +6,8 @@ from typing import Any, Dict, Optional
 
 @dataclass
 class AppState:
-    last_history_id: Optional[str] = None
+    last_history_TIME: Optional[str] = None
+    last_internal_date_ms: Optional[int] = None
     runs: int = 0
 
 def load_state(path: Path) -> AppState:

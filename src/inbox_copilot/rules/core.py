@@ -10,6 +10,7 @@ class MailItem:
     thread_id: Optional[str]
     headers: Dict[str, str]  # e.g. {"From": "...", "Subject": "..."}
     snippet: str
+    internal_date_ms: int
 
 
 class ActionType(str, Enum):

@@ -85,6 +85,7 @@ def main() -> None:
     def build_mail(mid: str) -> tuple[MailItem, dict]:
         """Fetch message metadata and normalize into MailItem + headers."""
         msg = client.get_message(mid, fmt="metadata")
+        internal_date_ms = int(msg.get("internalDate", 0))
         headers = {h["name"]: h["value"] for h in msg["payload"].get("headers", [])}
 
         mail = MailItem(
@@ -92,6 +93,7 @@ def main() -> None:
             thread_id=msg.get("threadId"),
             headers=headers,
             snippet=msg.get("snippet", ""),
+            internal_date_ms=internal_date_ms,
         )
         return mail, headers
 
@@ -128,13 +130,13 @@ def main() -> None:
             label = action.label_name or ""
             print(f"[rule:{rule_name}] -> {action.type} {label} ({action.reason})")
 
-    def process_message(mid: str) -> None:
-        try:
-            mail, headers = build_mail(mid)
-        except KeyError as e:
-            # Message was deleted/moved between list/history and fetch
-            print(f"[SKIP] {e}")
-            return
+    def process_message(mail: MailItem, headers: dict) -> None:
+        #try:
+        #    mail, headers = build_mail(mid)
+        #except KeyError as e:
+        #    # Message was deleted/moved between list/history and fetch
+        #    print(f"[SKIP] {e}")
+        #    return
 
         best_actions: list[Action] = []
         best_rule_name = "NONE"
@@ -196,42 +198,72 @@ def main() -> None:
         return message_ids, new_history_id
 
 
-    def get_message_ids_bootstrap() -> list[str]:
-        return client.list_messages(query="in:inbox newer_than:60d", max_results=200)
+    def get_message_ids_bootstrap(ageMails) -> list[str]:
+        return client.list_messages(query=f"in:inbox newer_than:{ageMails}d", max_results=200)
 
-    if st.last_history_id is None:
-        message_ids = get_message_ids_bootstrap()
+    if st.last_internal_date_ms is None:
+        ageMails = 60
+        print(f"[bootstrap] No last_internal_date_ms, fetching messages from last {ageMails} days")
+        message_ids = get_message_ids_bootstrap(ageMails)
         print(f"[bootstrap] Found {len(message_ids)} messages in last 7 days")
-
+        
+        latest_ts = 0
         for mid in message_ids:
-            process_message(mid)
+            try:
+                mail, headers = build_mail(mid)
+            except KeyError as e:
+                # Message was deleted/moved between list/history and fetch
+                print(f"[SKIP] {e}")
+                continue
+            
+            process_message(mail, headers)
+            ts = mail.internal_date_ms
+            latest_ts = max(latest_ts, ts)
+            print(f"mid={mid} internal_date_ms={mail.internal_date_ms}, latest_ts={latest_ts}  ")
 
-        latest_profile = client.get_profile()
-        st.last_history_id = latest_profile["historyId"]
+        st.last_internal_date_ms = latest_ts
         st.runs += 1
         save_state(STATE_PATH, st)
-        print(f"[state] initialized last_history_id={st.last_history_id}")
         return
 
-    # incremental
-    try:
-        message_ids, new_history_id = get_message_ids_incremental(st.last_history_id)
-    except HttpError as e:
-        # If startHistoryId is invalid/too old -> resync
-        print(f"[RESYNC] history list failed, falling back to last 7 days. Error: {e}")
-        message_ids = client.list_messages(query="in:inbox newer_than:7d", max_results=500)
-        new_history_id = client.get_profile()["historyId"]
-        for mid in message_ids:
-            process_message(mid)
+    # -------------------------
+    # incremental (time-based)
+    # -------------------------
+    last_ms = int(st.last_internal_date_ms or 0)
+
+    # Gmail query uses seconds, not ms. Add safety buffer to avoid missing messages in the same second.
+    after_seconds = max(0, (last_ms // 1000) - 60)
+
+    query = f"in:inbox after:{after_seconds}"
+    print(f"[incremental] Query={query}")
+
+    message_ids = client.list_messages(query=query, max_results=500)
+    print(f"[incremental] Found {len(message_ids)} candidate messages")
+
+    latest_ts = last_ms
 
     for mid in message_ids:
-        process_message(mid)
+        try:
+            mail, headers = build_mail(mid)
+        except KeyError as e:
+            print(f"[SKIP] {e}")
+            continue
 
-    st.last_history_id = new_history_id
+        # Dedupe/guard: only process messages strictly newer than our last stored ms timestamp
+        if mail.internal_date_ms <= last_ms:
+            # likely re-fetched due to buffer / second-resolution of after:
+            continue
+
+        process_message(mail, headers)
+        latest_ts = max(latest_ts, mail.internal_date_ms)
+        print("processed message", mid, "internal_date_ms=", mail.internal_date_ms, "latest_ts=", latest_ts)
+
+    # Update state only if we actually saw something newer
+    st.last_internal_date_ms = latest_ts
     st.runs += 1
     save_state(STATE_PATH, st)
-    print(f"[state] runs={st.runs} last_history_id={st.last_history_id}")
 
+    print(f"[state] runs={st.runs} last_internal_date_ms={st.last_internal_date_ms}")
 
 if __name__ == "__main__":
     main()
