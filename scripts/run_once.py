@@ -13,7 +13,7 @@ from inbox_copilot.gmail.client import GmailClient, GmailClientConfig
 
 # Rule system: normalized mail representation + concrete rules
 from inbox_copilot.rules.core import MailItem
-from inbox_copilot.rules.builtins import GoogleSecurityAlertRule, JobAlertRule, NewsletterRule, NoFitRule
+from inbox_copilot.rules.rules import GoogleSecurityAlertRule, JobAlertRule, NewsletterRule, NoFitRule
 
 # Adjust this import to where your Action lives
 from inbox_copilot.rules.actions import Action  # <-- change if needed
