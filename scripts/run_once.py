@@ -101,8 +101,9 @@ def main() -> None:
         """Return a list of (rule_name, action) pairs for this mail."""
         planned: list[tuple[str, Action]] = []
         for rule in rules:
-            if rule.match(mail):
-                for action in rule.actions(mail):
+            match_result = rule.match(mail[0])
+            if match_result[0]:
+                for action in rule.actions(mail, match_result[1]):
                     planned.append((rule.name, action))
         return planned
 
@@ -142,14 +143,16 @@ def main() -> None:
         best_rule_name = "NONE"
 
         for rule in sorted(rules, key=lambda r: r.priority, reverse=True):
-            if rule.match(mail):
-                best_actions = list(rule.actions(mail))
+            print(rule.name, rule.priority )
+            match_result = rule.match(mail)
+            if match_result[0]:
+                best_actions = list(rule.actions(mail, match_result[1]))
                 best_rule_name = getattr(rule, "name", rule.__class__.__name__)
                 break
 
         if not best_actions:
             nofit = NoFitRule()
-            best_actions = list(nofit.actions(mail))
+            best_actions = list(nofit.actions(mail, "NO_FIT"))
             best_rule_name = getattr(nofit, "name", nofit.__class__.__name__)
 
         subj = headers.get("Subject", "")

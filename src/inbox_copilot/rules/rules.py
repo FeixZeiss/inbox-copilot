@@ -27,9 +27,9 @@ class GoogleSecurityAlertRule(BaseRule):
             "warn",
         ])
 
-        return is_google_sender and is_security_topic
+        return is_google_sender and is_security_topic, "SECURITY_ALERT"
 
-    def actions(self, mail: MailItem) -> Iterable[Action]:
+    def actions(self, mail: MailItem, type: str) -> Iterable[Action]:
         yield Action(
             type="add_label",
             message_id=mail.id,
@@ -52,9 +52,10 @@ class NewsletterRule(BaseRule):
             self.contains_any(from_, ["newsletter", "noreply", "no-reply", "mailchimp"])
             or self.contains_any(subj, ["newsletter", "weekly", "digest"])
             or self.regex(snip, r"\b(unsubscribe|abbestellen)\b")
+            , "NEWSLETTER"
         )
 
-    def actions(self, mail: MailItem) -> Iterable[Action]:
+    def actions(self, mail: MailItem, type: str) -> Iterable[Action]:
         yield Action(
             type="add_label",
             message_id=mail.id,
@@ -67,6 +68,10 @@ import re
 from typing import Iterable
 
 class JobAlertRule(BaseRule):
+    CONFIRM_REASON = "CONFIRMATION"
+    REJECT_REASON  = "REJECTION"
+    INTERVIEW_REASON = "INTERVIEW"
+
     name = "job_application"
     priority = 50
 
@@ -196,56 +201,55 @@ class JobAlertRule(BaseRule):
 
         # 1) Very strong confirmation phrases
         if self.contains_any(hay, self.CONFIRM_PHRASES):
-            return True
+            return True, self.CONFIRM_REASON
 
         # 2) Rejections: require recruiting/application context to avoid false positives
         if self.contains_any(hay, self.REJECTION_PHRASES):
             if self.contains_any(hay, self.RECRUITING_WORDS) or self.contains_any(hay, self.APPLICATION_DOC_WORDS):
-                return True
+                return True, self.REJECT_REASON
 
         # 3) Interview invites / scheduling:
         # Require interview phrase AND some recruiting context to avoid catching random Teams meetings.
         if self.contains_any(hay, self.INTERVIEW_PHRASES):
             if self.contains_any(hay, self.RECRUITING_WORDS):
-                return True
+                return True, self.INTERVIEW_REASON
             # or subject looks like a job title / process mail (guarded)
             if re.search(r"\b(m/w/d|junior|senior|data engineer|software|entwickler)\b", hay, flags=re.IGNORECASE):
-                return True
+                return True, self.INTERVIEW_REASON
 
         # 4) ATS marker + recruiting words is very likely an application mail
         if self.contains_any(hay, self.ATS_MARKERS) and self.contains_any(hay, self.RECRUITING_WORDS):
-            return True
-
+            return True, self.CONFIRM_REASON
         # 5) Regex fallbacks (order-insensitive)
         # German: "dank*/bedank*" and "bewerb*" in any order
         if re.search(r"\bdank\w*\b.*\bbewerb\w*\b", hay, flags=re.IGNORECASE):
-            return True
+            return True, self.CONFIRM_REASON
         if re.search(r"\bbewerb\w*\b.*\bdank\w*\b", hay, flags=re.IGNORECASE):
-            return True
+            return True, self.CONFIRM_REASON
         if re.search(r"\bbedank\w*\b.*\bbewerb\w*\b", hay, flags=re.IGNORECASE):
-            return True
+            return True, self.CONFIRM_REASON
         if re.search(r"\bbewerb\w*\b.*\bbedank\w*\b", hay, flags=re.IGNORECASE):
-            return True
+            return True, self.CONFIRM_REASON
 
         # English: "receiv*" and "applicat*" in any order
         if re.search(r"\breceiv\w*\b.*\bapplicat\w*\b", hay, flags=re.IGNORECASE):
-            return True
+            return True,self.CONFIRM_REASON
         if re.search(r"\bapplicat\w*\b.*\breceiv\w*\b", hay, flags=re.IGNORECASE):
-            return True
+            return True, self.CONFIRM_REASON
 
         # 6) Direct interview + invite/termin fallback
         if re.search(r"\b(interview|vorstellungsgespräch)\b", hay, flags=re.IGNORECASE) and re.search(
             r"\b(einlad\w*|invite\w*|termin)\b", hay, flags=re.IGNORECASE
         ):
-            return True
+            return True, self.INTERVIEW_REASON
 
-        return False
+        return False, "noFit"
 
-    def actions(self, mail: MailItem) -> Iterable[Action]:
+    def actions(self, mail: MailItem, type: str) -> Iterable[Action]:
         yield Action(
             type="add_label",
             message_id=mail.id,
-            label_name="Applications",
+            label_name="Applications/" + type,
             reason="Job application / recruiting mail detected (confirmation, rejection, or interview scheduling)",
         )
         yield Action(
@@ -259,9 +263,9 @@ class NoFitRule(BaseRule):
     priority = 0
 
     def match(self, mail: MailItem) -> bool:
-        return True
+        return True, "NO_FIT"
 
-    def actions(self, mail: MailItem) -> Iterable[Action]:
+    def actions(self, mail: MailItem, type: str) -> Iterable[Action]:
         yield Action(
             type="add_label",
             message_id=mail.id,
