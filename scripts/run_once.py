@@ -18,18 +18,29 @@ from inbox_copilot.rules.builtins import GoogleSecurityAlertRule, JobAlertRule, 
 # Adjust this import to where your Action lives
 from inbox_copilot.rules.actions import Action  # <-- change if needed
 from googleapiclient.errors import HttpError
+from inbox_copilot.config.paths import STATE_PATH
+from inbox_copilot.config.paths import SECRETS_DIR
+
 
 
 def load_gmail_config() -> GmailClientConfig:
-    secrets_dir = os.getenv("INBOX_COPILOT_SECRETS_DIR") or os.getenv("AIVA_SECRETS_DIR")
-    if not secrets_dir:
-        raise RuntimeError("Set INBOX_COPILOT_SECRETS_DIR (or AIVA_SECRETS_DIR).")
-
-    base = Path(secrets_dir)
+    cred = SECRETS_DIR / "credentials.json"
+    if not cred.exists():
+        raise RuntimeError(
+            f"Missing Gmail credentials at {cred}. "
+            "Did you configure INBOX_COPILOT_SECRETS_DIR?"
+        )
+    
+    token = SECRETS_DIR / "gmail_token.json"
+    if not token.exists():
+        raise RuntimeError(
+            f"Missing Gmail credentials at {token}. "
+            "Did you configure INBOX_COPILOT_SECRETS_DIR?"
+        )
 
     cfg = GmailClientConfig(
-        credentials_path=base / "credentials.json",
-        token_path=base / "gmail_token.json",
+        credentials_path=cred,
+        token_path=token,
         user_id="me",
     )
 
@@ -50,13 +61,13 @@ def main() -> None:
     ]
 
     # Optional: run higher priority rules first if you add "priority"
-    # rules = sorted(rules, key=lambda r: getattr(r, "priority", 0), reverse=True)
+    # TODO:evtl anpassen
+    rules = sorted(rules, key=lambda r: getattr(r, "priority", 0), reverse=True)
 
     # ------------------------------------------------------------------
     # Load persistent application state
-    # ------------------------------------------------------------------
-    state_path = Path(".state/state.json")
-    st = load_state(state_path)
+    # -----------------------------------------------------------------
+    st = load_state(STATE_PATH)
 
     # ------------------------------------------------------------------
     # Initialize Gmail client
@@ -198,7 +209,7 @@ def main() -> None:
         latest_profile = client.get_profile()
         st.last_history_id = latest_profile["historyId"]
         st.runs += 1
-        save_state(state_path, st)
+        save_state(STATE_PATH, st)
         print(f"[state] initialized last_history_id={st.last_history_id}")
         return
 
@@ -218,7 +229,7 @@ def main() -> None:
 
     st.last_history_id = new_history_id
     st.runs += 1
-    save_state(state_path, st)
+    save_state(STATE_PATH, st)
     print(f"[state] runs={st.runs} last_history_id={st.last_history_id}")
 
 

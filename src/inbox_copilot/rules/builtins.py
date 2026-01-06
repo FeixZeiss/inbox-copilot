@@ -6,6 +6,8 @@ from typing import Iterable
 from inbox_copilot.rules.core import MailItem, Action
 from inbox_copilot.rules.BaseRule import BaseRule   
 
+
+
 class GoogleSecurityAlertRule(BaseRule):
     name = "google_security_alert"
     priority = 100
@@ -60,11 +62,11 @@ class NewsletterRule(BaseRule):
             reason="Newsletter heuristic matched",
         )
 
+# TODO: refine this rule further to reduce false negatives
 class JobAlertRule(BaseRule):
     name = "job_application"
     priority = 50
 
-    # Strong phrases (German + English) commonly found in confirmations
     CONFIRM_PHRASES = (
         "vielen dank für ihre bewerbung",
         "vielen dank fuer ihre bewerbung",
@@ -88,8 +90,30 @@ class JobAlertRule(BaseRule):
         "we appreciate your interest",
     )
 
+    # NEW: Interview / scheduling signals
+    INTERVIEW_PHRASES = (
+        "vorstellungsgespräch",
+        "vorstellungs-gespräch",
+        "interview",
+        "teams-interview",
+        "teams interview",
+        "wir möchten dich gerne kennen lernen",
+        "wir möchten dich gerne kennenlernen",
+        "laden dich ein",
+        "wir laden dich ein",
+        "einladung zum gespräch",
+        "einladung zum interview",
+        "termin",
+        "termin bestätigt",
+        "den genannten termin hast du bereits telefonisch bestätigt",
+        "besprechungs-id",
+        "passcode",
+        "microsoft teams",
+        "jetzt an der besprechung teilnehmen",
+        "1. vg",
+        "vg -",   # keep, but guarded by context below
+    )
 
-    # General recruiting signals (fallback)
     RECRUITING_WORDS = (
         "bewerbung",
         "application",
@@ -101,9 +125,9 @@ class JobAlertRule(BaseRule):
         "career",
         "position",
         "stelle",
+        "m/w/d",
     )
 
-    # ATS platforms (often show up in From / links / snippets)
     ATS_MARKERS = (
         "greenhouse",
         "lever",
@@ -130,11 +154,20 @@ class JobAlertRule(BaseRule):
         if self.contains_any(hay, self.CONFIRM_PHRASES):
             return True
 
-        # 2) ATS marker + recruiting words is also very likely an application mail
+        # 2) Interview invites / scheduling:
+        # Require interview phrase AND some recruiting context to avoid catching random Teams meetings.
+        if self.contains_any(hay, self.INTERVIEW_PHRASES):
+            if self.contains_any(hay, self.RECRUITING_WORDS):
+                return True
+            # or subject looks like a job title / process mail (e.g., contains m/w/d or "junior")
+            if re.search(r"\b(m/w/d|junior|senior|data engineer|software|entwickler)\b", hay):
+                return True
+
+        # 3) ATS marker + recruiting words is also very likely an application mail
         if self.contains_any(hay, self.ATS_MARKERS) and self.contains_any(hay, self.RECRUITING_WORDS):
             return True
 
-        # 3) Regex fallback: "dank* ... bewerb" or "received ... application"
+        # 4) Regex fallbacks
         if re.search(r"\bdank\w*\b.*\bbewerb\w*\b", hay, flags=re.IGNORECASE):
             return True
         if re.search(r"\breceiv\w*\b.*\bapplicat\w*\b", hay, flags=re.IGNORECASE):
@@ -142,8 +175,12 @@ class JobAlertRule(BaseRule):
         if re.search(r"\bbedank\w*\b.*\bbewerb\w*\b", hay, flags=re.IGNORECASE):
             return True
 
+        # NEW: direct "interview" + "invite" style fallback
+        if re.search(r"\b(interview|vorstellungsgespräch)\b", hay) and re.search(r"\b(einlad\w*|invite\w*|termin)\b", hay):
+            return True
 
         return False
+
 
     def actions(self, mail: MailItem) -> Iterable[Action]:
         yield Action(

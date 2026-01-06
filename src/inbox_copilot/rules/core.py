@@ -28,8 +28,3 @@ class Action:
     reason: str = ""
 
 
-class Rule(Protocol):
-    name: str
-
-    def match(self, mail: MailItem) -> bool: ...
-    def actions(self, mail: MailItem) -> Iterable[Action]: ...

@@ -101,7 +101,6 @@ class GmailClient:
             if getattr(e, "resp", None) and e.resp.status == 404:
                 try: 
                     os.remove(".state/state.json")
-                    print(f"File .state/state.json deleted successfully.")
 
                 except FileNotFoundError: print(f"File .state/state.json not found.")
                 raise KeyError(f"Message not found: {message_id}") from e
