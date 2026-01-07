@@ -152,7 +152,13 @@ class JobAlertRule(BaseRule):
         "jetzt an der besprechung teilnehmen",
         "1. vg",
         "vg -",  # keep, but guarded by context below
-    )
+        "bewerbungsgespräch",
+        "einladen",
+        "einzuladen",
+        "wir freuen uns, sie zu einem bewerbungsgespräch einzuladen",
+        "bitte bestätigen sie den termin",
+        "kalender",
+        "calendly",)
 
     # General recruiting context words
     RECRUITING_WORDS = (
@@ -192,36 +198,34 @@ class JobAlertRule(BaseRule):
         "successfactors",
     )
 
-    def match(self, mail: MailItem) -> bool:
+    def match(self, mail: MailItem):
         subj = self.subject(mail)
         from_ = self.sender(mail)
         snip = self.snippet(mail)
 
         hay = f"{subj}\n{from_}\n{snip}".lower()
 
-        # 1) Very strong confirmation phrases
-        if self.contains_any(hay, self.CONFIRM_PHRASES):
-            return True, self.CONFIRM_REASON
-
-        # 2) Rejections: require recruiting/application context to avoid false positives
+        # 1) Rejections first (usually unambiguous)
         if self.contains_any(hay, self.REJECTION_PHRASES):
             if self.contains_any(hay, self.RECRUITING_WORDS) or self.contains_any(hay, self.APPLICATION_DOC_WORDS):
                 return True, self.REJECT_REASON
 
-        # 3) Interview invites / scheduling:
-        # Require interview phrase AND some recruiting context to avoid catching random Teams meetings.
+        # 2) Interview invites / scheduling should override confirmation
         if self.contains_any(hay, self.INTERVIEW_PHRASES):
             if self.contains_any(hay, self.RECRUITING_WORDS):
                 return True, self.INTERVIEW_REASON
-            # or subject looks like a job title / process mail (guarded)
             if re.search(r"\b(m/w/d|junior|senior|data engineer|software|entwickler)\b", hay, flags=re.IGNORECASE):
                 return True, self.INTERVIEW_REASON
+
+        # 3) Confirmation only if we are NOT seeing interview signals
+        if self.contains_any(hay, self.CONFIRM_PHRASES):
+            return True, self.CONFIRM_REASON
 
         # 4) ATS marker + recruiting words is very likely an application mail
         if self.contains_any(hay, self.ATS_MARKERS) and self.contains_any(hay, self.RECRUITING_WORDS):
             return True, self.CONFIRM_REASON
-        # 5) Regex fallbacks (order-insensitive)
-        # German: "dank*/bedank*" and "bewerb*" in any order
+
+        # 5) Regex fallbacks (confirmation)
         if re.search(r"\bdank\w*\b.*\bbewerb\w*\b", hay, flags=re.IGNORECASE):
             return True, self.CONFIRM_REASON
         if re.search(r"\bbewerb\w*\b.*\bdank\w*\b", hay, flags=re.IGNORECASE):
@@ -231,9 +235,8 @@ class JobAlertRule(BaseRule):
         if re.search(r"\bbewerb\w*\b.*\bbedank\w*\b", hay, flags=re.IGNORECASE):
             return True, self.CONFIRM_REASON
 
-        # English: "receiv*" and "applicat*" in any order
         if re.search(r"\breceiv\w*\b.*\bapplicat\w*\b", hay, flags=re.IGNORECASE):
-            return True,self.CONFIRM_REASON
+            return True, self.CONFIRM_REASON
         if re.search(r"\bapplicat\w*\b.*\breceiv\w*\b", hay, flags=re.IGNORECASE):
             return True, self.CONFIRM_REASON
 
@@ -245,13 +248,29 @@ class JobAlertRule(BaseRule):
 
         return False, "noFit"
 
+
     def actions(self, mail: MailItem, type: str) -> Iterable[Action]:
+        label_map = {
+            self.CONFIRM_REASON: "Confirmation",
+            self.INTERVIEW_REASON: "Interview",
+            self.REJECT_REASON: "Rejection",
+        }
+        label_suffix = label_map.get(type, type)
+
         yield Action(
             type="add_label",
             message_id=mail.id,
-            label_name="Applications/" + type,
+            label_name="Applications",
+            reason="Parent label for all application-related mails",
+        )
+
+        yield Action(
+            type="add_label",
+            message_id=mail.id,
+            label_name="Applications/" + label_suffix,
             reason="Job application / recruiting mail detected (confirmation, rejection, or interview scheduling)",
         )
+        
         yield Action(
             type="analyze_application",
             message_id=mail.id,

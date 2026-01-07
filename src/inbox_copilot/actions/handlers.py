@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
-from typing import Dict
+import re
 from openai import OpenAI
 import json
+import base64
 
-from inbox_copilot.rules.core import Action, ActionType
+from inbox_copilot.rules.core import Action
 from inbox_copilot.gmail.client import GmailClient
+from inbox_copilot.config.paths import LOGS_DIR
 
 
 class ActionHandler(ABC):
@@ -52,8 +53,12 @@ class AnalyzeApplicationHandler(ActionHandler):
     client_ai = OpenAI()
 
     def handle(self, client: GmailClient, action: Action) -> None:
+        print(f"[ANALYZE] message_id={action.message_id} reason={action.reason}")
         # Fetch message content (for v1: subject/from/snippet is enough; later use full body)
-        msg = client.get_message(action.message_id, fmt="metadata")
+        msg = client.get_message(action.message_id, fmt="full")
+        payload = msg.get("payload", {})
+        body_text = self.extract_body(payload)
+
         headers = {h["name"]: h["value"] for h in msg["payload"].get("headers", [])}
         subject = headers.get("Subject", "")
         sender = headers.get("From", "")
@@ -91,10 +96,27 @@ class AnalyzeApplicationHandler(ActionHandler):
 
 
         resp = self.client_ai.responses.create(
-            model="gpt-4.1-mini",
+            model="gpt-5.2",
             input=[
-                {"role": "system", "content": "Return ONLY JSON matching the schema."},
-                {"role": "user", "content": f"Subject: {subject}\nFrom: {sender}\nSnippet: {snippet}\n"},
+                {
+                    "role": "system",
+                    "content": (
+                        "Return ONLY JSON matching the schema. "
+                        "Extract facts explicitly from the email. "
+                        "Include URLs in important_links. "
+                        "Include response deadlines in deadlines. "
+                        "Do not invent facts. "
+                        "Convert dates to YYYY-MM-DD when possible."
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": (
+                        f"Subject: {subject}\n"
+                        f"From: {sender}\n\n"
+                        f"EMAIL BODY:\n{body_text}"
+                    ),
+                },
             ],
             text={
                 "format": {
@@ -105,8 +127,69 @@ class AnalyzeApplicationHandler(ActionHandler):
             },
         )
 
+        output_text = getattr(resp, "output_text", None)
+        if not output_text:
+            print(f"[ANALYZE_RESULT] message_id={action.message_id} json=<empty>")
+            return
 
-        data = json.loads(resp.output_text)
-        print("[APPLICATION ANALYSIS]", action.message_id)
-        print(json.dumps(data, indent=2, ensure_ascii=False))
+        try:
+            analysis = json.loads(output_text)
+        except json.JSONDecodeError:
+            print(f"[ANALYZE_RESULT] message_id={action.message_id} json=<invalid>")
+            return
 
+        if analysis.get("status") != "interview":
+            print(f"[ANALYZE_RESULT] message_id={action.message_id} json={output_text}")
+            return
+
+        output_dir = LOGS_DIR / "interviews"
+        output_dir.mkdir(parents=True, exist_ok=True)
+        file_stem = self._sanitize_filename(analysis.get("company"))
+        output_path = output_dir / f"{file_stem}.json"
+
+        if output_path.exists():
+            output_path = output_dir / f"{file_stem}-{action.message_id}.json"
+
+        output_path.write_text(
+            json.dumps(analysis, indent=2, ensure_ascii=True),
+            encoding="utf-8",
+        )
+        print(f"[ANALYZE_SAVED] message_id={action.message_id} path={output_path}")
+
+
+    def extract_body(self, payload: dict) -> str:
+        """
+        Extract plain text body from Gmail message payload.
+        Falls nur HTML vorhanden ist, wird HTML als Fallback zurückgegeben.
+        """
+        def decode(data: str) -> str:
+            return base64.urlsafe_b64decode(data).decode("utf-8", errors="replace")
+
+        # 1️⃣ Direkt im Body
+        body = payload.get("body", {})
+        if body.get("data"):
+            return decode(body["data"])
+
+        # 2️⃣ Multipart
+        for part in payload.get("parts", []) or []:
+            mime = part.get("mimeType", "")
+            body = part.get("body", {})
+
+            if mime == "text/plain" and body.get("data"):
+                return decode(body["data"])
+
+        # 3️⃣ HTML Fallback
+        for part in payload.get("parts", []) or []:
+            mime = part.get("mimeType", "")
+            body = part.get("body", {})
+
+            if mime == "text/html" and body.get("data"):
+                return decode(body["data"])
+
+        return ""
+
+    def _sanitize_filename(self, company: str | None) -> str:
+        if not company:
+            return "unknown_company"
+        cleaned = re.sub(r"[^A-Za-z0-9._-]+", "_", company.strip())
+        return cleaned or "unknown_company"

@@ -132,13 +132,6 @@ def main() -> None:
             print(f"[rule:{rule_name}] -> {action.type} {label} ({action.reason})")
 
     def process_message(mail: MailItem, headers: dict) -> None:
-        #try:
-        #    mail, headers = build_mail(mid)
-        #except KeyError as e:
-        #    # Message was deleted/moved between list/history and fetch
-        #    print(f"[SKIP] {e}")
-        #    return
-
         best_actions: list[Action] = []
         best_rule_name = "NONE"
 
