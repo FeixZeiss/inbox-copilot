@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from email.message import EmailMessage
+import base64
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -180,3 +182,15 @@ class GmailClient:
             id=message_id,
             body={"addLabelIds": [label_id]},
         ).execute()
+
+    def create_draft(self, message: EmailMessage) -> Dict[str, Any]:
+        """Create a Gmail draft from an EmailMessage and return the API response."""
+        raw_bytes = message.as_bytes()
+        raw_b64 = base64.urlsafe_b64encode(raw_bytes).decode("utf-8")
+        body = {"message": {"raw": raw_b64}}
+        return (
+            self.service.users()
+            .drafts()
+            .create(userId=self._cfg.user_id, body=body)
+            .execute()
+        )

@@ -13,6 +13,7 @@ The project uses the **Gmail API**, a **rule-based engine**, and a **persistent 
 - Read Gmail messages (metadata / full)
 - Rule-based classification system (applications, newsletters, security alerts, etc.)
 - Persistent state (last processed timestamp)
+- Optional: interview draft creation from JSON logs
 - Clean project architecture (CLI scripts, core logic, storage)
 - Designed for local execution with Conda or virtual environments
 
@@ -23,7 +24,8 @@ The project uses the **Gmail API**, a **rule-based engine**, and a **persistent 
 ```text
 inbox-copilot/
 ├── scripts/
-│   └── run_once.py          # Single processing run
+│   ├── run_once.py          # Single processing run
+│   └── create_drafts_from_interviews.py  # Create Gmail drafts from interview JSONs
 ├── src/
 │   └── inbox_copilot/
 │       ├── gmail/           # Gmail API client
@@ -106,6 +108,26 @@ On the first run:
 - OAuth token is reused automatically
 - Processing state is persisted
 - Deleted or unavailable messages are skipped safely
+
+## ✉️ Create Drafts from Interview Logs
+Interview analyses are stored as JSON in `logs/interviews`. You can turn them into Gmail drafts:
+
+```bash
+python scripts/create_drafts_from_interviews.py --dry-run
+```
+
+Only files with `action_required: true` are used. The script creates a marker file
+`*.draft.json` next to the source JSON to avoid duplicates.
+
+Optional: generate "perfect" drafts via OpenAI:
+```bash
+python scripts/create_drafts_from_interviews.py --use-openai --dry-run
+```
+
+Useful flags:
+- `--default-to "recruiter@example.com"` set a default recipient
+- `--no-skip-existing` ignore marker files and create drafts again
+- `--model`, `--language`, `--tone` adjust OpenAI output
 
 ## 🧯 Troubleshooting
 ❌ invalid_grant: Token has been expired or revoked
