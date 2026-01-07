@@ -97,8 +97,7 @@ source setup.sh
 
 Expected output:
 ```text
-✔ inbox-copilot environment initialized
-INBOX_COPILOT_SECRETS_DIR=.../inbox-copilot/secrets
+Environment loaded for inbox-copilot
 ```
 
 ## ▶️ Running the Project
@@ -109,6 +108,7 @@ Or with Make:
 ```bash
 make run
 ```
+`make run` will source `setup.sh` automatically.
 
 On the first run:
 - A browser window opens for OAuth login
