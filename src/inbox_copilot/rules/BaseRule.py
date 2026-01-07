@@ -76,16 +76,17 @@ class BaseRule(ABC):
     # --- Rule API ---
 
     @abstractmethod
-    def match(self, mail: MailItem) -> bool:
-        """Return True if the rule applies."""
+    def match(self, mail: MailItem) -> tuple[bool, str]:
+        """Return (matched, reason)."""
         raise NotImplementedError
 
     @abstractmethod
-    def actions(self, mail: MailItem) -> Iterable[Action]:
+    def actions(self, mail: MailItem, reason: str) -> Iterable[Action]:
         """Yield actions to apply if match() is True."""
         raise NotImplementedError
 
     # Optional structured match (nice for debugging / logging later)
     def match_info(self, mail: MailItem) -> RuleMatch:
         """Default implementation: wrap match() in RuleMatch."""
-        return RuleMatch(matched=self.match(mail))
+        matched, reason = self.match(mail)
+        return RuleMatch(matched=matched, reason=reason)

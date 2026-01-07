@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from typing import Iterable
 
-from inbox_copilot.rules.core import MailItem, Action
+from inbox_copilot.rules.core import MailItem, Action, ActionType
 from inbox_copilot.rules.BaseRule import BaseRule   
 
 
@@ -12,7 +12,7 @@ class GoogleSecurityAlertRule(BaseRule):
     name = "google_security_alert"
     priority = 100
 
-    def match(self, mail: MailItem) -> bool:
+    def match(self, mail: MailItem) -> tuple[bool, str]:
         from_ = self.sender(mail)
         subj = self.subject(mail)
 
@@ -31,7 +31,7 @@ class GoogleSecurityAlertRule(BaseRule):
 
     def actions(self, mail: MailItem, type: str) -> Iterable[Action]:
         yield Action(
-            type="add_label",
+            type=ActionType.ADD_LABEL,
             message_id=mail.id,
             label_name="Security",
             reason="Google security-related sender/subject",
@@ -43,7 +43,7 @@ class NewsletterRule(BaseRule):
     name = "newsletter"
     priority = 10
 
-    def match(self, mail: MailItem) -> bool:
+    def match(self, mail: MailItem) -> tuple[bool, str]:
         from_ = self.sender(mail)
         subj = self.subject(mail)
         snip = self.snippet(mail)
@@ -57,15 +57,11 @@ class NewsletterRule(BaseRule):
 
     def actions(self, mail: MailItem, type: str) -> Iterable[Action]:
         yield Action(
-            type="add_label",
+            type=ActionType.ADD_LABEL,
             message_id=mail.id,
             label_name="Newsletter",
             reason="Newsletter heuristic matched",
         )
-
-# TODO: refine this rule further to reduce false negatives
-import re
-from typing import Iterable
 
 class JobAlertRule(BaseRule):
     CONFIRM_REASON = "CONFIRMATION"
@@ -113,6 +109,11 @@ class JobAlertRule(BaseRule):
         "nicht in den engsten kreis",
         "bei der besetzung der stelle",
         "absage",
+        "absagen",
+        "bedauerlicherweise",
+        "leider keine passende",
+        "keine passende stelle",
+        "keine passende rolle",
         "wir bedauern",
         "bedauern",
         "keinen günstigeren bescheid",
@@ -198,7 +199,7 @@ class JobAlertRule(BaseRule):
         "successfactors",
     )
 
-    def match(self, mail: MailItem):
+    def match(self, mail: MailItem) -> tuple[bool, str]:
         subj = self.subject(mail)
         from_ = self.sender(mail)
         snip = self.snippet(mail)
@@ -258,21 +259,21 @@ class JobAlertRule(BaseRule):
         label_suffix = label_map.get(type, type)
 
         yield Action(
-            type="add_label",
+            type=ActionType.ADD_LABEL,
             message_id=mail.id,
             label_name="Applications",
             reason="Parent label for all application-related mails",
         )
 
         yield Action(
-            type="add_label",
+            type=ActionType.ADD_LABEL,
             message_id=mail.id,
             label_name="Applications/" + label_suffix,
             reason="Job application / recruiting mail detected (confirmation, rejection, or interview scheduling)",
         )
         
         yield Action(
-            type="analyze_application",
+            type=ActionType.ANALYZE_APPLICATION,
             message_id=mail.id,
             reason="Extract application status & next steps",
         )
@@ -281,12 +282,12 @@ class JobAlertRule(BaseRule):
 class NoFitRule(BaseRule):
     priority = 0
 
-    def match(self, mail: MailItem) -> bool:
+    def match(self, mail: MailItem) -> tuple[bool, str]:
         return True, "NO_FIT"
 
     def actions(self, mail: MailItem, type: str) -> Iterable[Action]:
         yield Action(
-            type="add_label",
+            type=ActionType.ADD_LABEL,
             message_id=mail.id,
             label_name="NoFit",
             reason="Mail did not match any other rule",

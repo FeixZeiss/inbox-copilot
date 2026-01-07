@@ -1,5 +1,3 @@
-import os
-from pathlib import Path
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -12,12 +10,11 @@ from inbox_copilot.storage.state import load_state, save_state
 from inbox_copilot.gmail.client import GmailClient, GmailClientConfig
 
 # Rule system: normalized mail representation + concrete rules
-from inbox_copilot.rules.core import MailItem
-from inbox_copilot.rules.rules import GoogleSecurityAlertRule, JobAlertRule, NewsletterRule, NoFitRule
+from inbox_copilot.models import NormalizedEmail
+from inbox_copilot.pipeline.orchestrator import analyze_email
+from inbox_copilot.pipeline.policy import actions_from_analysis
+from inbox_copilot.parsing.parser import extract_body_from_payload
 
-# Adjust this import to where your Action lives
-from inbox_copilot.rules.actions import Action  # <-- change if needed
-from googleapiclient.errors import HttpError
 from inbox_copilot.config.paths import STATE_PATH
 from inbox_copilot.config.paths import SECRETS_DIR
 
@@ -32,11 +29,6 @@ def load_gmail_config() -> GmailClientConfig:
         )
     
     token = SECRETS_DIR / "gmail_token.json"
-    if not token.exists():
-        raise RuntimeError(
-            f"Missing Gmail credentials at {token}. "
-            "Did you configure INBOX_COPILOT_SECRETS_DIR?"
-        )
 
     cfg = GmailClientConfig(
         credentials_path=cred,
@@ -51,19 +43,6 @@ def load_gmail_config() -> GmailClientConfig:
 
 
 def main() -> None:
-    # ------------------------------------------------------------------
-    # Rule registry
-    # ------------------------------------------------------------------
-    rules = [
-        GoogleSecurityAlertRule(),
-        NewsletterRule(),
-        JobAlertRule(),
-    ]
-
-    # Optional: run higher priority rules first if you add "priority"
-    # TODO:evtl anpassen
-    rules = sorted(rules, key=lambda r: getattr(r, "priority", 0), reverse=True)
-
     # ------------------------------------------------------------------
     # Load persistent application state
     # -----------------------------------------------------------------
@@ -82,78 +61,41 @@ def main() -> None:
     # ------------------------------------------------------------------
     # Local helpers: one evaluation flow for BOTH bootstrap + incremental
     # ------------------------------------------------------------------
-    def build_mail(mid: str) -> tuple[MailItem, dict]:
-        """Fetch message metadata and normalize into MailItem + headers."""
-        msg = client.get_message(mid, fmt="metadata")
+    def build_email(mid: str) -> tuple[NormalizedEmail, dict]:
+        """Fetch message data and normalize into NormalizedEmail + headers."""
+        msg = client.get_message(mid, fmt="full")
         internal_date_ms = int(msg.get("internalDate", 0))
-        headers = {h["name"]: h["value"] for h in msg["payload"].get("headers", [])}
+        payload = msg.get("payload", {})
+        headers = {h["name"]: h["value"] for h in payload.get("headers", [])}
+        subject = headers.get("Subject", "")
+        from_email = headers.get("From", "")
+        snippet = msg.get("snippet", "")
+        body_text = extract_body_from_payload(payload)
 
-        mail = MailItem(
-            id=mid,
-            thread_id=msg.get("threadId"),
-            headers=headers,
-            snippet=msg.get("snippet", ""),
+        email = NormalizedEmail(
+            message_id=mid,
+            subject=subject,
+            from_email=from_email,
+            snippet=snippet,
+            body_text=body_text,
             internal_date_ms=internal_date_ms,
+            headers=headers,
         )
-        return mail, headers
+        return email, headers
 
-    def evaluate_rules(mail: MailItem) -> list[tuple[str, Action]]:
-        """Return a list of (rule_name, action) pairs for this mail."""
-        planned: list[tuple[str, Action]] = []
-        for rule in rules:
-            match_result = rule.match(mail[0])
-            if match_result[0]:
-                for action in rule.actions(mail, match_result[1]):
-                    planned.append((rule.name, action))
-        return planned
-
-    def dedupe_actions(planned: list[tuple[str, Action]]) -> list[tuple[str, Action]]:
-        """Remove duplicate actions (same type/label/reason) while keeping order."""
-        seen: set[tuple[str, str | None, str]] = set()
-        out: list[tuple[str, Action]] = []
-        for rule_name, action in planned:
-            key = (action.type, action.label_name, action.reason)
-            if key not in seen:
-                seen.add(key)
-                out.append((rule_name, action))
-        return out
-
-    def print_dry_run(headers: dict, planned: list[tuple[str, Action]]) -> None:
-        """Pretty print planned actions for one mail."""
-        if not planned:
-            return
-
-        print("----")
-        print(f"Subject: {headers.get('Subject', '')}")
-        print(f"From:    {headers.get('From', '')}")
-
-        for rule_name, action in planned:
-            label = action.label_name or ""
-            print(f"[rule:{rule_name}] -> {action.type} {label} ({action.reason})")
-
-    def process_message(mail: MailItem, headers: dict) -> None:
-        best_actions: list[Action] = []
-        best_rule_name = "NONE"
-
-        for rule in sorted(rules, key=lambda r: r.priority, reverse=True):
-            print(rule.name, rule.priority )
-            match_result = rule.match(mail)
-            if match_result[0]:
-                best_actions = list(rule.actions(mail, match_result[1]))
-                best_rule_name = getattr(rule, "name", rule.__class__.__name__)
-                break
-
-        if not best_actions:
-            nofit = NoFitRule()
-            best_actions = list(nofit.actions(mail, "NO_FIT"))
-            best_rule_name = getattr(nofit, "name", nofit.__class__.__name__)
+    def process_message(email: NormalizedEmail, headers: dict) -> None:
+        analysis = analyze_email(email)
+        actions = actions_from_analysis(analysis, email.message_id)
 
         subj = headers.get("Subject", "")
         frm = headers.get("From", "")
-        print(f"[match] {mid} -> {best_rule_name} | Subject={subj!r} | From={frm!r}")
+        print(
+            f"[match] {email.message_id} -> {analysis.category} "
+            f"({analysis.reason}) | Subject={subj!r} | From={frm!r}"
+        )
 
         executor = default_executor(dry_run=False)
-        executor.run(client, best_actions)
+        executor.run(client, actions)
 
     def get_message_ids_incremental(start_history_id: str) -> tuple[list[str], str]:
         message_ids: list[str] = []
@@ -206,16 +148,16 @@ def main() -> None:
         latest_ts = 0
         for mid in message_ids:
             try:
-                mail, headers = build_mail(mid)
+                email, headers = build_email(mid)
             except KeyError as e:
                 # Message was deleted/moved between list/history and fetch
                 print(f"[SKIP] {e}")
                 continue
             
-            process_message(mail, headers)
-            ts = mail.internal_date_ms
+            process_message(email, headers)
+            ts = email.internal_date_ms
             latest_ts = max(latest_ts, ts)
-            print(f"mid={mid} internal_date_ms={mail.internal_date_ms}, latest_ts={latest_ts}  ")
+            print(f"mid={mid} internal_date_ms={email.internal_date_ms}, latest_ts={latest_ts}  ")
 
         st.last_internal_date_ms = latest_ts
         st.runs += 1
@@ -240,19 +182,19 @@ def main() -> None:
 
     for mid in message_ids:
         try:
-            mail, headers = build_mail(mid)
+            email, headers = build_email(mid)
         except KeyError as e:
             print(f"[SKIP] {e}")
             continue
 
         # Dedupe/guard: only process messages strictly newer than our last stored ms timestamp
-        if mail.internal_date_ms <= last_ms:
+        if email.internal_date_ms <= last_ms:
             # likely re-fetched due to buffer / second-resolution of after:
             continue
 
-        process_message(mail, headers)
-        latest_ts = max(latest_ts, mail.internal_date_ms)
-        print("processed message", mid, "internal_date_ms=", mail.internal_date_ms, "latest_ts=", latest_ts)
+        process_message(email, headers)
+        latest_ts = max(latest_ts, email.internal_date_ms)
+        print("processed message", mid, "internal_date_ms=", email.internal_date_ms, "latest_ts=", latest_ts)
 
     # Update state only if we actually saw something newer
     st.last_internal_date_ms = latest_ts

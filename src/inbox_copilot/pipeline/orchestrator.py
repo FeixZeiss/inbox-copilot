@@ -24,4 +24,5 @@ def analyze_email(email: NormalizedEmail) -> EmailAnalysis:
         todos=todos,
         confidence=rule_result.confidence,
         notes=notes,
+        reason=rule_result.reason,
     )

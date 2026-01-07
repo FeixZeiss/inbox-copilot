@@ -4,11 +4,11 @@ from abc import ABC, abstractmethod
 import re
 from openai import OpenAI
 import json
-import base64
 
 from inbox_copilot.rules.core import Action
 from inbox_copilot.gmail.client import GmailClient
 from inbox_copilot.config.paths import LOGS_DIR
+from inbox_copilot.parsing.parser import extract_body_from_payload
 
 
 class ActionHandler(ABC):
@@ -57,7 +57,7 @@ class AnalyzeApplicationHandler(ActionHandler):
         # Fetch message content (for v1: subject/from/snippet is enough; later use full body)
         msg = client.get_message(action.message_id, fmt="full")
         payload = msg.get("payload", {})
-        body_text = self.extract_body(payload)
+        body_text = extract_body_from_payload(payload)
 
         headers = {h["name"]: h["value"] for h in msg["payload"].get("headers", [])}
         subject = headers.get("Subject", "")
@@ -156,37 +156,6 @@ class AnalyzeApplicationHandler(ActionHandler):
         )
         print(f"[ANALYZE_SAVED] message_id={action.message_id} path={output_path}")
 
-
-    def extract_body(self, payload: dict) -> str:
-        """
-        Extract plain text body from Gmail message payload.
-        Falls nur HTML vorhanden ist, wird HTML als Fallback zurückgegeben.
-        """
-        def decode(data: str) -> str:
-            return base64.urlsafe_b64decode(data).decode("utf-8", errors="replace")
-
-        # 1️⃣ Direkt im Body
-        body = payload.get("body", {})
-        if body.get("data"):
-            return decode(body["data"])
-
-        # 2️⃣ Multipart
-        for part in payload.get("parts", []) or []:
-            mime = part.get("mimeType", "")
-            body = part.get("body", {})
-
-            if mime == "text/plain" and body.get("data"):
-                return decode(body["data"])
-
-        # 3️⃣ HTML Fallback
-        for part in payload.get("parts", []) or []:
-            mime = part.get("mimeType", "")
-            body = part.get("body", {})
-
-            if mime == "text/html" and body.get("data"):
-                return decode(body["data"])
-
-        return ""
 
     def _sanitize_filename(self, company: str | None) -> str:
         if not company:

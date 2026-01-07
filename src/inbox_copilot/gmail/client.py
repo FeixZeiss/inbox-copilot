@@ -10,8 +10,7 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
-from inbox_copilot.gmail.LabelColors import LABEL_COLORS 
-import os 
+from inbox_copilot.gmail.LabelColors import LABEL_COLORS
 
 # Needs modify to add/remove labels (messages.modify)
 SCOPES = ["https://www.googleapis.com/auth/gmail.modify"]
@@ -99,10 +98,6 @@ class GmailClient:
         except HttpError as e:
             # Skip messages that no longer exist (deleted/moved) for this mailbox
             if getattr(e, "resp", None) and e.resp.status == 404:
-                try: 
-                    os.remove(".state/state.json")
-
-                except FileNotFoundError: print(f"File .state/state.json not found.")
                 raise KeyError(f"Message not found: {message_id}") from e
         raise
 
