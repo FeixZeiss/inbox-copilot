@@ -12,7 +12,7 @@ The project uses the **Gmail API**, a **rule-based engine**, and a **persistent 
 - OAuth2 authentication with the Gmail API
 - Read Gmail messages (metadata / full)
 - Rule-based classification system (applications, newsletters, security alerts, etc.)
-- Persistent state (e.g. historyId, last processed messages)
+- Persistent state (last processed timestamp)
 - Clean project architecture (CLI scripts, core logic, storage)
 - Designed for local execution with Conda or virtual environments
 
@@ -56,7 +56,7 @@ inbox-copilot/secrets/credentials.json
 ⚠️ Never commit credentials.json or gmail_token.json
 
 ## OpenAI / ChatGPT API Setup (optional)
-If you use features that call OpenAI (e.g. LLM-based classification), you need an API key.
+If you use features that call OpenAI (e.g. application analysis), you need an API key.
 1. Create an API key in your OpenAI account
 2. Add it to a local .env file in the project root:
 
@@ -107,8 +107,8 @@ On the first run:
 
 ## 🔁 Repeated Runs
 - OAuth token is reused automatically
--Processing state is persisted
--Deleted or unavailable messages are skipped safely
+- Processing state is persisted
+- Deleted or unavailable messages are skipped safely
 
 ## 🧯 Troubleshooting
 ❌ invalid_grant: Token has been expired or revoked
@@ -121,7 +121,7 @@ python scripts/run_once.py
 ❌ HttpError 404: Requested entity was not found
 - The email was deleted or moved
 - The error is handled and the message is skipped
-- Resetting the state may help in rare cases
+- If you suspect state issues, delete `.state/state.json` to force a bootstrap run
 
 ## Security
 - Secrets are stored locally only
