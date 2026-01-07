@@ -110,7 +110,7 @@ On the first run:
 - Deleted or unavailable messages are skipped safely
 
 ## ✉️ Create Drafts from Interview Logs
-Interview analyses are stored as JSON in `logs/interviews`. You can turn them into Gmail drafts:
+Interview analyses are stored as JSON in `logs/interviews`. You can turn them into Gmail drafts (use --dry-run to test everything, remove it to create the drafts):
 
 ```bash
 python scripts/create_drafts_from_interviews.py --dry-run
