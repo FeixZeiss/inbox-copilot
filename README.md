@@ -87,19 +87,6 @@ Or use the Makefile:
 ```bash
 make setup
 ```
-## Environment Setup
-
-The project relies on environment variables, which are initialized via setup.sh.
-```bash
-cd inbox-copilot
-source setup.sh
-```
-
-Expected output:
-```text
-Environment loaded for inbox-copilot
-```
-
 ## ▶️ Running the Project
 ```bash
 python scripts/run_once.py
