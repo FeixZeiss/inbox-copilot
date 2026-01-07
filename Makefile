@@ -7,7 +7,10 @@ setup:
 		echo "Creating .env from .env.example"; \
 		cp .env.example .env; \
 	fi
+	@if [ ! -f secrets/credentials.json ]; then \
+		echo "Missing secrets/credentials.json (Gmail OAuth client). See README.md for setup."; \
+	fi
 	@echo "If you need API keys, edit .env in the project root."
 
 run:
-	python3 scripts/run_once.py
+	@bash -c "source setup.sh && python3 scripts/run_once.py"

@@ -58,10 +58,11 @@ inbox-copilot/secrets/credentials.json
 ## OpenAI / ChatGPT API Setup (optional)
 If you use features that call OpenAI (e.g. application analysis), you need an API key.
 1. Create an API key in your OpenAI account
-2. Add it to a local .env file in the project root (or use the example template):
+2. Create and edit a local .env file in the project root (start from the example template):
 
 Create/edit:
 ```bash
+cp .env.example .env
 nano .env
 ```
 
@@ -73,7 +74,7 @@ OPENAI_API_KEY="YOUR_OPENAI_API_KEY_HERE"
 Notes:
 - Keep the quotes if your shell/editor adds special characters.
 - Never commit .env (should be in .gitignore).
-You can start from `.env.example` and copy it to `.env`.
+Edit `.env` before your first run.
 
 ## Installation
 Conda environment (recommended)
