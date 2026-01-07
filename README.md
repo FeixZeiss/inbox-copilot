@@ -81,6 +81,10 @@ conda create -n inbox-copilot python=3.11
 conda activate inbox-copilot
 pip install -r requirements.txt
 ```
+Or use the Makefile:
+```bash
+make setup
+```
 ## Environment Setup
 
 The project relies on environment variables, which are initialized via setup.sh.
@@ -98,6 +102,10 @@ INBOX_COPILOT_SECRETS_DIR=.../inbox-copilot/secrets
 ## ▶️ Running the Project
 ```bash
 python scripts/run_once.py
+```
+Or with Make:
+```bash
+make run
 ```
 
 On the first run:
