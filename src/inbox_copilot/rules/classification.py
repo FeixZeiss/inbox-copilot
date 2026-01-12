@@ -85,6 +85,7 @@ def _job_label_suffix(reason: str) -> str:
         JobAlertRule.CONFIRM_REASON: "Confirmation",
         JobAlertRule.INTERVIEW_REASON: "Interview",
         JobAlertRule.REJECT_REASON: "Rejection",
+        JobAlertRule.NOFIT_REASON: "NoFit",
     }
     return mapping.get(reason, reason or "Unknown")
 

@@ -67,6 +67,7 @@ class JobAlertRule(BaseRule):
     CONFIRM_REASON = "CONFIRMATION"
     REJECT_REASON  = "REJECTION"
     INTERVIEW_REASON = "INTERVIEW"
+    NOFIT_REASON = "NO_FIT"
 
     name = "job_application"
     priority = 50
@@ -173,6 +174,7 @@ class JobAlertRule(BaseRule):
         "talent acquisition",
         "hr",
         "career",
+        "job",
         "position",
         "stelle",
         "m/w/d",
@@ -247,7 +249,15 @@ class JobAlertRule(BaseRule):
         ):
             return True, self.INTERVIEW_REASON
 
-        return False, "noFit"
+        # 7) Recruiting context without clear status -> still an application, but NoFit
+        if (
+            self.contains_any(hay, self.RECRUITING_WORDS)
+            or self.contains_any(hay, self.APPLICATION_DOC_WORDS)
+            or self.contains_any(hay, self.ATS_MARKERS)
+        ):
+            return True, self.NOFIT_REASON
+
+        return False, self.NOFIT_REASON
 
 
     def actions(self, mail: MailItem, type: str) -> Iterable[Action]:
@@ -255,6 +265,7 @@ class JobAlertRule(BaseRule):
             self.CONFIRM_REASON: "Confirmation",
             self.INTERVIEW_REASON: "Interview",
             self.REJECT_REASON: "Rejection",
+            self.NOFIT_REASON: "NoFit",
         }
         label_suffix = label_map.get(type, type)
 
