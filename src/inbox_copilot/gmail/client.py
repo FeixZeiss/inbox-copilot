@@ -14,8 +14,11 @@ from googleapiclient.errors import HttpError
 
 from inbox_copilot.gmail.LabelColors import LABEL_COLORS
 
-# Needs modify to add/remove labels (messages.modify)
-SCOPES = ["https://www.googleapis.com/auth/gmail.modify"]
+# Needs modify to add/remove labels (messages.modify); include readonly to avoid scope mismatch
+SCOPES = [
+    "https://www.googleapis.com/auth/gmail.modify",
+    "https://www.googleapis.com/auth/gmail.readonly",
+]
 
 
 @dataclass(frozen=True)

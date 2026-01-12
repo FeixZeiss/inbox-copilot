@@ -99,6 +99,34 @@ make run
 ```
 `make run` will source `setup.sh` automatically.
 
+## 🌐 Frontend (React + Vite)
+The frontend lives in `frontend/` and is served by the FastAPI backend after building.
+
+Install deps:
+```bash
+cd frontend
+npm install
+```
+
+Gmail Setup (UI):
+- Upload `credentials.json` in the UI (stored locally in `secrets/`).
+- Click "Gmail verbinden" to run OAuth and generate `gmail_token.json`.
+
+Dev mode (runs on `http://localhost:5173` and proxies `/api` to the backend):
+```bash
+npm run dev
+```
+
+Build for production (served by the backend):
+```bash
+npm run build
+```
+
+Run backend to serve the built frontend:
+```bash
+uvicorn backend.app.main:app --reload
+```
+
 On the first run:
 - A browser window opens for OAuth login
 - Gmail access must be granted

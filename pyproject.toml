@@ -15,6 +15,7 @@ dependencies = [
     "google-auth",
     "google-auth-oauthlib",
     "google-auth-httplib2",
+    "python-multipart",
 ]
 
 [tool.setuptools.packages.find]
