@@ -21,6 +21,7 @@ export default function App() {
   // UI state: upload/OAuth feedback messages.
   const [uploadMessage, setUploadMessage] = useState("");
   const [tokenUploadMessage, setTokenUploadMessage] = useState("");
+  const [openaiTokenUploadMessage, setOpenAITokenUploadMessage] = useState("");
   const [oauthMessage, setOauthMessage] = useState("");
   const [oauthUrl, setOauthUrl] = useState("");
   const [logs, setLogs] = useState([])
@@ -183,6 +184,36 @@ export default function App() {
     }
   }
 
+  async function handleUploadOpenAIToken(event) {
+    const file = event.target.files?.[0];
+    if (!file) {
+      return;
+    }
+    setOpenAITokenUploadMessage("");
+    // Multipart upload for openai_token.json.
+    const formData = new FormData();
+    formData.append("file", file);
+
+    try {
+      const res = await fetch("/api/secrets/openai_token", {
+        method: "POST",
+        body: formData,
+      });
+      if (!res.ok) {
+        const payload = await res.json().catch(() => ({}));
+        throw new Error(payload?.detail || "Upload failed");
+      }
+      setOpenAITokenUploadMessage("openai_token.json gespeichert.");
+      fetchSecretsStatus();
+    } catch (err) {
+      setOpenAITokenUploadMessage(
+        err instanceof Error ? err.message : "Upload fehlgeschlagen."
+      );
+    } finally {
+      event.target.value = "";
+    }
+  } 
+
   async function handleOAuth() {
     setOauthMessage("");
     setOauthUrl("");
@@ -294,7 +325,7 @@ export default function App() {
             {uploadMessage && <div className="hint">{uploadMessage}</div>}
           </div>
           <div>
-            <strong>2) Token hochladen (optional)</strong>
+            <strong>2) G_Mail-Token hochladen (optional)</strong>
             <p className="muted">
               Nutze das, wenn du schon einen gmail_token.json hast.
             </p>
@@ -307,7 +338,20 @@ export default function App() {
             {tokenUploadMessage && <div className="hint">{tokenUploadMessage}</div>}
           </div>
           <div>
-            <strong>3) OAuth starten</strong>
+            <strong>3) OpenAI Token hochladen (optional)</strong>
+            <p className="muted">
+              Nutze das, wenn du schon einen OpenAI Token hast und intelligenten E-Mail versand möchtest.
+            </p>
+            {/* Upload an existing OpenAI token if already authenticated. */}
+            <input
+              type="file"
+              accept="application/json"
+              onChange={handleUploadOpenAIToken}
+            />
+            {openaiTokenUploadMessage && <div className="hint">{openaiTokenUploadMessage}</div>}
+          </div>
+          <div>
+            <strong>4) OAuth starten</strong>
             <p className="muted">
               Öffnet ein Browser-Fenster für Google Login und speichert den Token lokal.
             </p>
@@ -329,6 +373,8 @@ export default function App() {
           <strong>{secretsStatus?.credentials_present ? "vorhanden" : "fehlt"}</strong>
           {" · "}Token:{" "}
           <strong>{secretsStatus?.token_present ? "vorhanden" : "fehlt"}</strong>
+          {" · "}OpenAI Token:{" "}
+          <strong>{secretsStatus?.openai_token_present ? "vorhanden" : "fehlt"}</strong>
         </div>
       </section>
 

@@ -7,7 +7,7 @@ import json
 
 from inbox_copilot.rules.core import Action
 from inbox_copilot.gmail.client import GmailClient
-from inbox_copilot.config.paths import LOGS_DIR
+from inbox_copilot.config.paths import LOGS_DIR, SECRETS_DIR
 from inbox_copilot.parsing.parser import extract_body_from_payload
 
 
@@ -49,8 +49,25 @@ class ArchiveHandler(ActionHandler):
         print(f"[ARCHIVE] message_id={action.message_id} reason={action.reason}")
 
 class AnalyzeApplicationHandler(ActionHandler):
-    client_ai = OpenAI()
+    def __init__(self) -> None:
+        api_key = self._load_openai_api_key()
+        self.client_ai = OpenAI(api_key=api_key) if api_key else OpenAI()
 
+    @staticmethod
+    def _load_openai_api_key() -> str | None:
+        token_path = SECRETS_DIR / "openai_token.txt"
+        if token_path.exists():
+            token = token_path.read_text(encoding="utf-8").strip()
+            return token or None
+
+        json_path = SECRETS_DIR / "openai_token.json"
+        if json_path.exists():
+            payload = json.loads(json_path.read_text(encoding="utf-8"))
+            token = payload.get("api_key") or payload.get("token") or payload.get("openai_api_key")
+            return token or None
+
+        return None
+    
     def handle(self, client: GmailClient, action: Action) -> None:
         print(f"[ANALYZE] message_id={action.message_id} reason={action.reason}")
         # Fetch full body so extraction can consider the whole email.

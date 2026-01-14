@@ -19,11 +19,13 @@ _oauth_flows: dict[str, InstalledAppFlow] = {}
 def secrets_status() -> dict:
     credentials_path = SECRETS_DIR / "credentials.json"
     token_path = SECRETS_DIR / "gmail_token.json"
+    openai_token_path = SECRETS_DIR / "openai_token.json"
     return {
         "ok": True,
         "secrets_dir": str(SECRETS_DIR),
         "credentials_present": credentials_path.exists(),
         "token_present": token_path.exists(),
+        "openai_token_present": openai_token_path.exists(),
     }
 
 
@@ -49,6 +51,20 @@ def upload_token(file: UploadFile = File(...)) -> dict:
 
     SECRETS_DIR.mkdir(parents=True, exist_ok=True)
     target = SECRETS_DIR / "gmail_token.json"
+    content = file.file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="Empty upload.")
+
+    target.write_bytes(content)
+    return {"ok": True, "path": str(target)}
+
+@router.post("/secrets/openai_token")   
+def upload_openai_token(file: UploadFile = File(...)) -> dict:
+    if not file.filename or not file.filename.endswith(".json"):
+        raise HTTPException(status_code=400, detail="Please upload a JSON file.")
+
+    SECRETS_DIR.mkdir(parents=True, exist_ok=True)
+    target = SECRETS_DIR / "openai_token.json"
     content = file.file.read()
     if not content:
         raise HTTPException(status_code=400, detail="Empty upload.")
