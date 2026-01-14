@@ -1,6 +1,7 @@
 @import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap");
 
 :root {
+  /* Core theme tokens used throughout the UI. */
   color-scheme: light;
   font-family: "Space Grotesk", system-ui, sans-serif;
   --bg: #f3f2ee;
@@ -13,11 +14,13 @@
 }
 
 * {
+  /* Keep sizing predictable across layout calculations. */
   box-sizing: border-box;
 }
 
 body {
   margin: 0;
+  /* Soft gradient background for depth without dark mode. */
   background: radial-gradient(circle at top, #fff0e0 0%, #f3f2ee 45%, #ece9e2 100%);
   color: var(--ink);
   min-height: 100vh;
@@ -26,6 +29,7 @@ body {
 .page {
   position: relative;
   padding: 64px clamp(24px, 6vw, 80px) 96px;
+  /* Vertical rhythm for major sections. */
   display: flex;
   flex-direction: column;
   gap: 32px;
@@ -37,6 +41,7 @@ body {
   position: absolute;
   inset: -100px 20% auto 20%;
   height: 220px;
+  /* Decorative halo behind the hero. */
   background: linear-gradient(120deg, rgba(255, 122, 26, 0.35), rgba(15, 111, 255, 0.25));
   filter: blur(80px);
   z-index: 0;
@@ -45,6 +50,7 @@ body {
 .hero {
   position: relative;
   z-index: 1;
+  /* Keep header content compact and readable. */
   display: grid;
   gap: 18px;
   max-width: 700px;
@@ -88,6 +94,7 @@ p {
   font-weight: 600;
   font-size: 1rem;
   cursor: pointer;
+  /* Subtle motion cue for interactivity. */
   transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
@@ -113,6 +120,7 @@ p {
   padding: 24px 28px;
   display: grid;
   gap: 18px;
+  /* Elevated card treatment to separate content sections. */
   box-shadow: 0 30px 80px rgba(0, 0, 0, 0.08);
 }
 
@@ -196,6 +204,21 @@ p {
   border-radius: 12px;
 }
 
+.error-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.error-item {
+  background: #fff3ee;
+  border: 1px solid #ffd3c2;
+  color: #8a2b12;
+  padding: 8px 12px;
+  border-radius: 10px;
+  font-size: 0.9rem;
+}
+
 .grid {
   display: grid;
   gap: 20px;
@@ -243,4 +266,15 @@ ul {
 
 .panel:nth-of-type(3) {
   animation-delay: 0.16s;
+}
+
+.console {
+  background: #111;
+  color: #eee;
+  padding: 12px;
+  border-radius: 12px;
+  max-height: 200px;
+  overflow-y: auto;
+  font-family: monospace;
+  font-size: 0.9rem;
 }

@@ -13,6 +13,7 @@ def extract_body_from_payload(payload: dict) -> str:
         return base64.urlsafe_b64decode(data).decode("utf-8", errors="replace")
 
     def find_part(part: dict, mime_type: str) -> Optional[str]:
+        # Depth-first search through multipart payloads.
         if part.get("mimeType") == mime_type and part.get("body", {}).get("data"):
             return decode(part["body"]["data"])
         for child in part.get("parts", []) or []:

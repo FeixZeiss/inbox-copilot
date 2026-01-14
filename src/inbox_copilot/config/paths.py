@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 # Load .env once, globally
 load_dotenv()
 
-# Project root (robust, unabhängig vom cwd)
+# Project root (independent of current working directory).
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
 def resolve_dir(env_key: str, default: str) -> Path:

@@ -28,6 +28,7 @@ def classify_email(*, subject: str, from_email: str, body_text: str) -> RuleResu
         NewsletterRule(),
         JobAlertRule(),
     ]
+    # Higher priority rules win when multiple could match.
     rules = sorted(rules, key=lambda r: r.priority, reverse=True)
 
     for rule in rules:
@@ -81,6 +82,7 @@ def _result_from_rule(rule_name: str, reason: str) -> RuleResult:
 
 
 def _job_label_suffix(reason: str) -> str:
+    # Map fine-grained reasons into a Gmail label hierarchy.
     mapping = {
         JobAlertRule.CONFIRM_REASON: "Confirmation",
         JobAlertRule.INTERVIEW_REASON: "Interview",

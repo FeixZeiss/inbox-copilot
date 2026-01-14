@@ -29,8 +29,7 @@ class AddLabelHandler(ActionHandler):
         if not action.label_name:
             raise ValueError("ADD_LABEL requires label_name")
 
-        # You need a method like this on your GmailClient:
-        # client.add_label(message_id, label_name)
+        # Ensure the label exists before applying it to the message.
         label_ID = client.get_or_create_label_id(action.label_name)
         if not label_ID:
             raise ValueError(f"Failed to get or create label: {action.label_name}") 
@@ -54,7 +53,7 @@ class AnalyzeApplicationHandler(ActionHandler):
 
     def handle(self, client: GmailClient, action: Action) -> None:
         print(f"[ANALYZE] message_id={action.message_id} reason={action.reason}")
-        # Fetch message content (for v1: subject/from/snippet is enough; later use full body)
+        # Fetch full body so extraction can consider the whole email.
         msg = client.get_message(action.message_id, fmt="full")
         payload = msg.get("payload", {})
         body_text = extract_body_from_payload(payload)
@@ -64,7 +63,7 @@ class AnalyzeApplicationHandler(ActionHandler):
         sender = headers.get("From", "")
         snippet = msg.get("snippet", "")
 
-        # Structured Outputs (JSON Schema) so parsing is reliable
+        # Use Structured Outputs so parsing is deterministic.
         schema = {
             "type": "object",
             "additionalProperties": False,
@@ -95,6 +94,7 @@ class AnalyzeApplicationHandler(ActionHandler):
         }
 
 
+        # Keep the prompt strict: we only accept JSON for automation.
         resp = self.client_ai.responses.create(
             model="gpt-5.2",
             input=[
@@ -138,6 +138,7 @@ class AnalyzeApplicationHandler(ActionHandler):
             print(f"[ANALYZE_RESULT] message_id={action.message_id} json=<invalid>")
             return
 
+        # Only persist interview-related results for now.
         if analysis.get("status") != "interview":
             print(f"[ANALYZE_RESULT] message_id={action.message_id} json={output_text}")
             return
@@ -160,5 +161,6 @@ class AnalyzeApplicationHandler(ActionHandler):
     def _sanitize_filename(self, company: str | None) -> str:
         if not company:
             return "unknown_company"
+        # Restrict filenames to a safe subset.
         cleaned = re.sub(r"[^A-Za-z0-9._-]+", "_", company.strip())
         return cleaned or "unknown_company"

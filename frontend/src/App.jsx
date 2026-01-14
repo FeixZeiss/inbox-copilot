@@ -12,18 +12,22 @@ function formatCount(value) {
 }
 
 export default function App() {
+  // UI state: run lifecycle and current backend snapshots.
   const [status, setStatus] = useState(STATUS.idle);
   const [summary, setSummary] = useState(null);
   const [error, setError] = useState("");
   const [statusInfo, setStatusInfo] = useState(null);
   const [secretsStatus, setSecretsStatus] = useState(null);
+  // UI state: upload/OAuth feedback messages.
   const [uploadMessage, setUploadMessage] = useState("");
   const [tokenUploadMessage, setTokenUploadMessage] = useState("");
   const [oauthMessage, setOauthMessage] = useState("");
   const [oauthUrl, setOauthUrl] = useState("");
+  const [logs, setLogs] = useState([])
 
   async function fetchSecretsStatus() {
     try {
+      // Keep the UI in sync with backend secret availability.
       const res = await fetch("/api/secrets/status");
       if (!res.ok) {
         return;
@@ -39,6 +43,7 @@ export default function App() {
 
   async function fetchStatus() {
     try {
+      // Poll run status while a job is in flight.
       const res = await fetch("/api/run/status");
       if (!res.ok) {
         return;
@@ -53,6 +58,7 @@ export default function App() {
   }
 
   const metrics = useMemo(() => {
+    // Merge live metrics with the last summary for a stable display.
     if (!summary && !statusInfo?.metrics) {
       return null;
     }
@@ -66,6 +72,7 @@ export default function App() {
   }, [summary, statusInfo]);
 
   useEffect(() => {
+    // Initial load: fetch baseline status and secrets once.
     fetchStatus();
     fetchSecretsStatus();
   }, []);
@@ -74,11 +81,26 @@ export default function App() {
     if (status !== STATUS.running) {
       return;
     }
+    // Poll only while the backend is running to reduce load.
     const timer = setInterval(fetchStatus, 1000);
     return () => clearInterval(timer);
   }, [status]);
 
+  useEffect(() => {
+    const originalLog = console.log;
+
+    console.log = (...args) => {
+      setLogs((prev) => [...prev, args.join(" ")]);
+      originalLog(...args);
+    };
+
+    return () => {
+      console.log = originalLog;
+    };
+  }, []);
+
   async function handleRun() {
+    // Optimistically mark as running; backend will confirm via status API.
     setStatus(STATUS.running);
     setSummary(null);
     setError("");
@@ -93,6 +115,7 @@ export default function App() {
       if (!payload?.ok) {
         throw new Error("Backend returned ok=false");
       }
+      // Store the final summary so the UI can show totals.
       setSummary(payload.summary || null);
       setStatus(STATUS.done);
       fetchStatus();
@@ -108,6 +131,7 @@ export default function App() {
       return;
     }
     setUploadMessage("");
+    // Multipart upload for credentials.json.
     const formData = new FormData();
     formData.append("file", file);
 
@@ -135,6 +159,7 @@ export default function App() {
       return;
     }
     setTokenUploadMessage("");
+    // Multipart upload for gmail_token.json.
     const formData = new FormData();
     formData.append("file", file);
 
@@ -172,6 +197,7 @@ export default function App() {
       if (!url) {
         throw new Error("OAuth-URL fehlt");
       }
+      // Try opening a popup; if blocked, show the URL so the user can continue.
       const popup = window.open(url, "_blank", "noopener,noreferrer");
       if (!popup) {
         setOauthUrl(url);
@@ -210,6 +236,7 @@ export default function App() {
       </header>
 
       <section className="panel">
+        {/* Run summary panel with metrics and error feedback. */}
         <div className="panel-header">
           <h2>Last Run Summary</h2>
           <span className="timestamp">
@@ -219,6 +246,7 @@ export default function App() {
           </span>
         </div>
         {metrics ? (
+          // Render metrics when we have either live or summary data.
           <div className="metrics">
             {metrics.map((item) => (
               <div key={item.label} className="metric">
@@ -228,12 +256,23 @@ export default function App() {
             ))}
           </div>
         ) : (
+          // Empty-state copy for first-time users.
           <div className="placeholder">Trigger a run to see metrics.</div>
         )}
         {error && <div className="error">{error}</div>}
+        {statusInfo?.recent_errors?.length ? (
+          <div className="error-list">
+            {statusInfo.recent_errors.slice(0, 10).map((item, index) => (
+              <div key={`${item.message_id}-${index}`} className="error-item">
+                Fehler: {item.error} · E-Mail: {item.from || item.subject || item.message_id}
+              </div>
+            ))}
+          </div>
+        ) : null}
       </section>
 
       <section className="panel">
+        {/* Gmail setup panel: credentials, token upload, or OAuth flow. */}
         <div className="panel-header">
           <h2>Gmail Setup</h2>
           <span className="timestamp">
@@ -246,6 +285,7 @@ export default function App() {
             <p className="muted">
               Die Datei wird nur lokal im Ordner secrets/ gespeichert.
             </p>
+            {/* Upload Google OAuth client credentials (credentials.json). */}
             <input
               type="file"
               accept="application/json"
@@ -258,6 +298,7 @@ export default function App() {
             <p className="muted">
               Nutze das, wenn du schon einen gmail_token.json hast.
             </p>
+            {/* Upload an existing Gmail token if already authenticated. */}
             <input
               type="file"
               accept="application/json"
@@ -270,6 +311,7 @@ export default function App() {
             <p className="muted">
               Öffnet ein Browser-Fenster für Google Login und speichert den Token lokal.
             </p>
+            {/* Start OAuth if the token is not available yet. */}
             <button className="secondary" onClick={handleOAuth}>
               Gmail verbinden
             </button>
@@ -282,6 +324,7 @@ export default function App() {
           </div>
         </div>
         <div className="status-line">
+          {/* Quick status line for current secret availability. */}
           Credentials:{" "}
           <strong>{secretsStatus?.credentials_present ? "vorhanden" : "fehlt"}</strong>
           {" · "}Token:{" "}
@@ -290,6 +333,7 @@ export default function App() {
       </section>
 
       <section className="panel grid">
+        {/* High-level explanation panel for non-technical users. */}
         <div>
           <h3>What happens</h3>
           <ul>
@@ -307,6 +351,24 @@ export default function App() {
           </ul>
         </div>
       </section>
+
+      <section className="panel">
+        <div className="panel-header">
+          <h2>Letzte Aktionen</h2>
+        </div>
+        {statusInfo?.recent_actions?.length ? (
+          <div className="console">
+            {statusInfo.recent_actions.map((a, i) => (
+              <div key={i}>
+                E-Mail: {a.from || a.subject || a.message_id} erhalten, bekommt Label: {a.label}
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="placeholder">Noch keine Aktionen.</div>
+        )}
+      </section>
+
     </div>
   );
 }

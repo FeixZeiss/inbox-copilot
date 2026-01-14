@@ -208,27 +208,27 @@ class JobAlertRule(BaseRule):
 
         hay = f"{subj}\n{from_}\n{snip}".lower()
 
-        # 1) Rejections first (usually unambiguous)
+        # 1) Rejections first (usually unambiguous and should not be overridden).
         if self.contains_any(hay, self.REJECTION_PHRASES):
             if self.contains_any(hay, self.RECRUITING_WORDS) or self.contains_any(hay, self.APPLICATION_DOC_WORDS):
                 return True, self.REJECT_REASON
 
-        # 2) Interview invites / scheduling should override confirmation
+        # 2) Interview invites / scheduling should override confirmation.
         if self.contains_any(hay, self.INTERVIEW_PHRASES):
             if self.contains_any(hay, self.RECRUITING_WORDS):
                 return True, self.INTERVIEW_REASON
             if re.search(r"\b(m/w/d|junior|senior|data engineer|software|entwickler)\b", hay, flags=re.IGNORECASE):
                 return True, self.INTERVIEW_REASON
 
-        # 3) Confirmation only if we are NOT seeing interview signals
+        # 3) Confirmation only if we are NOT seeing interview signals.
         if self.contains_any(hay, self.CONFIRM_PHRASES):
             return True, self.CONFIRM_REASON
 
-        # 4) ATS marker + recruiting words is very likely an application mail
+        # 4) ATS marker + recruiting words is very likely an application mail.
         if self.contains_any(hay, self.ATS_MARKERS) and self.contains_any(hay, self.RECRUITING_WORDS):
             return True, self.CONFIRM_REASON
 
-        # 5) Regex fallbacks (confirmation)
+        # 5) Regex fallbacks (confirmation) to catch phrasing variations.
         if re.search(r"\bdank\w*\b.*\bbewerb\w*\b", hay, flags=re.IGNORECASE):
             return True, self.CONFIRM_REASON
         if re.search(r"\bbewerb\w*\b.*\bdank\w*\b", hay, flags=re.IGNORECASE):
@@ -243,13 +243,13 @@ class JobAlertRule(BaseRule):
         if re.search(r"\bapplicat\w*\b.*\breceiv\w*\b", hay, flags=re.IGNORECASE):
             return True, self.CONFIRM_REASON
 
-        # 6) Direct interview + invite/termin fallback
+        # 6) Direct interview + invite/termin fallback for mixed-language emails.
         if re.search(r"\b(interview|vorstellungsgespräch)\b", hay, flags=re.IGNORECASE) and re.search(
             r"\b(einlad\w*|invite\w*|termin)\b", hay, flags=re.IGNORECASE
         ):
             return True, self.INTERVIEW_REASON
 
-        # 7) Recruiting context without clear status -> still an application, but NoFit
+        # 7) Recruiting context without clear status -> still an application, but NoFit.
         if (
             self.contains_any(hay, self.RECRUITING_WORDS)
             or self.contains_any(hay, self.APPLICATION_DOC_WORDS)

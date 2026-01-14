@@ -24,10 +24,12 @@ class ActionExecutor:
         for action in actions:
             handler = self.handlers.get(action.type)
             if not handler:
+                # Missing handler should not crash the whole run.
                 print(f"[WARN] No handler registered for action type: {action.type}")
                 continue
 
             if self.dry_run:
+                # Dry-run mode is useful for testing policies without side effects.
                 print(
                     f"[DRY-RUN] would run type={action.type} "
                     f"message_id={action.message_id} label={action.label_name} reason={action.reason}"

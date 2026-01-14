@@ -14,6 +14,8 @@ from inbox_copilot.parsing.parser import extract_body_from_payload
 from inbox_copilot.pipeline.orchestrator import analyze_email
 from inbox_copilot.pipeline.policy import actions_from_analysis
 from inbox_copilot.storage.state import load_state, save_state
+from inbox_copilot.rules.core import ActionType
+
 
 @dataclass
 class RunSummary:
@@ -45,6 +47,7 @@ def _bootstrap_query(days: int) -> str:
 
 
 def _incremental_query(last_internal_date_ms: int) -> str:
+    # Gmail "after:" expects seconds since epoch, not milliseconds.
     epoch_seconds = max(0, int(last_internal_date_ms / 1000))
     return f"after:{epoch_seconds}"
 
@@ -64,6 +67,7 @@ def get_message_ids_since(
 
 
 def build_mail(client: GmailClient, message_id: str) -> Tuple[NormalizedEmail, Dict[str, str]]:
+    # Pull full payload once so we can extract headers + body consistently.
     msg = client.get_message(message_id, fmt="full")
     payload = msg.get("payload", {})
     headers = {h["name"]: h["value"] for h in payload.get("headers", [])}
@@ -90,9 +94,24 @@ def process_message(
     client: GmailClient,
     mail: NormalizedEmail,
     executor: ActionExecutor,
+    report_cb: Optional[Callable[[Dict[str, Any]], None]] = None,
 ) -> None:
+    # Keep analysis pure and delegate side effects to the executor.
     analysis = analyze_email(mail)
     actions = actions_from_analysis(analysis, message_id=mail.message_id)
+
+    if report_cb:
+        for action in actions:
+            if action.type == ActionType.ADD_LABEL:
+                report_cb(
+                    {
+                        "message_id": mail.message_id,
+                        "from": mail.from_email,
+                        "subject": mail.subject,
+                        "label": action.label_name,
+                    }
+                )
+
     executor.run(client, actions)
 
 
@@ -122,10 +141,21 @@ def run_once(
         if verbose:
             print(msg)
 
-    def report(step: str, *, detail: str | None = None, **metrics: Any) -> None:
+    def report(
+        step: str,
+        *,
+        detail: str | None = None,
+        metrics: Optional[Dict[str, Any]] = None,
+        **extra: Any,
+    ) -> None:
         if not progress_cb:
             return
-        payload = {"detail": detail, "metrics": metrics} if metrics else {"detail": detail}
+        # Normalize the payload shape for both UI and CLI consumers.
+        payload: Dict[str, Any] = {"detail": detail}
+        if metrics:
+            payload["metrics"] = metrics
+        if extra:
+            payload.update(extra)
         progress_cb(step, payload)
 
     processed = 0
@@ -169,17 +199,29 @@ def run_once(
     report(
         "processing",
         detail=f"Processing 0/{seen}",
-        processed=processed,
-        message_ids_seen=seen,
-        skipped_deleted=skipped_deleted,
-        errors=errors,
+        metrics={
+            "processed": processed,
+            "message_ids_seen": seen,
+            "skipped_deleted": skipped_deleted,
+            "errors": errors,
+        },
     )
 
     # --- Process loop ---
     for mid in message_ids:
+        mail: Optional[NormalizedEmail] = None
         try:
             mail, _headers = build_mail(client, mid)
-            process_message(client, mail, executor)
+            process_message(
+                client,
+                mail,
+                executor,
+                report_cb=lambda action: report(
+                    "action",
+                    detail="Label applied",
+                    action=action,
+                ),
+            )
             processed += 1
 
             ts = getattr(mail, "internal_date_ms", None)
@@ -194,15 +236,27 @@ def run_once(
         except Exception as e:
             errors += 1
             log(f"[error] {type(e).__name__}: {e}")
+            report(
+                "error",
+                detail=f"{type(e).__name__}: {e}",
+                error={
+                    "message_id": mid,
+                    "from": mail.from_email if mail else "",
+                    "subject": mail.subject if mail else "",
+                    "error": f"{type(e).__name__}: {e}",
+                },
+            )
             continue
         finally:
             report(
                 "processing",
                 detail=f"Processing {processed}/{seen}",
-                processed=processed,
-                message_ids_seen=seen,
-                skipped_deleted=skipped_deleted,
-                errors=errors,
+                metrics={
+                    "processed": processed,
+                    "message_ids_seen": seen,
+                    "skipped_deleted": skipped_deleted,
+                    "errors": errors,
+                },
             )
 
     # --- Update & persist state ---
@@ -220,5 +274,5 @@ def run_once(
         latest_internal_date_ms=latest_ts,
         message_ids_seen=seen,
     )
-    report("done", detail="Run completed", **asdict(summary))
+    report("done", detail="Run completed", metrics=asdict(summary))
     return asdict(summary)

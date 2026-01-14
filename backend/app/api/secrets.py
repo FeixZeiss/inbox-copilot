@@ -68,6 +68,7 @@ def start_oauth(request: Request) -> dict:
         str(cfg.credentials_path),
         SCOPES,
     )
+    # Base URL is used to build the OAuth callback URL dynamically.
     base_url = str(request.base_url).rstrip("/")
     flow.redirect_uri = f"{base_url}/api/secrets/oauth/callback"
 
@@ -76,6 +77,7 @@ def start_oauth(request: Request) -> dict:
         include_granted_scopes="true",
         prompt="consent",
     )
+    # Store flow by state so callback can resume securely.
     _oauth_flows[state] = flow
     run_status_store.update(
         state="running",

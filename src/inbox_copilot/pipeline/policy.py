@@ -7,6 +7,7 @@ from inbox_copilot.rules.core import Action, ActionType
 
 
 def actions_from_analysis(analysis: EmailAnalysis, message_id: str) -> List[Action]:
+    # Policy layer decides side effects based on analysis output.
     actions: List[Action] = []
 
     for label in analysis.suggested_labels:

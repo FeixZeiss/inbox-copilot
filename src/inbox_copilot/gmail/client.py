@@ -37,7 +37,7 @@ class GmailClient:
         self._creds: Optional[Credentials] = None
         self._service = None
 
-        # Cache label name -> label id to avoid repeated API calls
+        # Cache label name -> label id to avoid repeated API calls.
         self._label_cache: Dict[str, str] = {}
 
     def connect(self) -> None:
@@ -56,6 +56,7 @@ class GmailClient:
                     str(self._cfg.credentials_path),
                     SCOPES,
                 )
+                # Use local server OAuth flow for installed apps.
                 creds = flow.run_local_server(port=0)
 
             # Save the credentials for the next run.
@@ -65,7 +66,7 @@ class GmailClient:
         self._creds = creds
         self._service = build("gmail", "v1", credentials=creds)
 
-        # Clear label cache after (re)connect to avoid stale mappings
+        # Clear label cache after (re)connect to avoid stale mappings.
         self._label_cache.clear()
 
     @property
@@ -138,6 +139,7 @@ class GmailClient:
     def get_or_create_label_id(self, label_name: str) -> str:
         label_id = self._get_label_id(label_name)
         if label_id:
+            # Keep colors consistent for known labels.
             self._update_label_color(label_id, label_name)
             return label_id
         return self._create_label(label_name)

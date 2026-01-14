@@ -23,11 +23,27 @@ async def run_endpoint() -> dict:
             "step": step,
             "detail": detail,
         }
+        
+        action = payload.get("action")
+        if action:
+            current = run_status_store.snapshot().get("recent_actions", [])
+            # Neueste oben, max 50 Eintraege
+            updated = [action] + current
+            update_fields["recent_actions"] = updated[:50]
+
+        error = payload.get("error")
+        if error:
+            current = run_status_store.snapshot().get("recent_errors", [])
+            # Keep most recent errors first, max 50 entries.
+            updated = [error] + current
+            update_fields["recent_errors"] = updated[:50]
+
         if "metrics" in payload:
             update_fields["metrics"] = payload.get("metrics") or {}
         run_status_store.update(**update_fields)
 
     try:
+        # Run blocking Gmail processing in a worker thread so FastAPI stays responsive.
         summary = await run_in_threadpool(
             run_once,
             state_path=state_path,

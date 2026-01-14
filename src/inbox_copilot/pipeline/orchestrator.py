@@ -4,6 +4,7 @@ from inbox_copilot.extractors.todos import extract_todos
 from inbox_copilot.extractors.summary import summarize
 
 def analyze_email(email: NormalizedEmail) -> EmailAnalysis:
+    # Classify first so extractors can add supportive signals.
     rule_result = classify_email(
         subject=email.subject,
         from_email=email.from_email,
@@ -13,6 +14,7 @@ def analyze_email(email: NormalizedEmail) -> EmailAnalysis:
     todos = extract_todos(email.subject, email.body_text)
     summary_bullets = summarize(email.snippet, email.body_text)
 
+    # Keep notes additive so downstream policies can explain decisions.
     notes = list(rule_result.notes)
     if todos:
         notes.append("Detected potential action items")
