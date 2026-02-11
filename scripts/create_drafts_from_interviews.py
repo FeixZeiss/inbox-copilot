@@ -50,35 +50,35 @@ def build_body(data: dict) -> str:
     links = data.get("important_links") or []
 
     lines: list[str] = []
-    lines.append("Hallo [Name],")
+    lines.append("Hello [Name],")
     lines.append("")
     if role:
         lines.append(
-            f"vielen Dank fuer die Einladung zum Interview fuer die Position {role}."
+            f"Thank you for the interview invitation for the {role} position."
         )
     else:
-        lines.append("vielen Dank fuer die Einladung zum Interview.")
+        lines.append("Thank you for the interview invitation.")
     if action_required:
-        lines.append("Ich bestaetige den Termin gern.")
+        lines.append("I am happy to confirm the appointment.")
     else:
-        lines.append("Ich freue mich auf das Gespraech.")
+        lines.append("I am looking forward to the conversation.")
     lines.append("")
-    lines.append(f"Viele Gruesse")
-    lines.append("[Dein Name]")
+    lines.append("Best regards,")
+    lines.append("[Your Name]")
 
     notes: list[str] = []
     if next_step:
-        notes.append(f"- Naechster Schritt: {next_step}")
+        notes.append(f"- Next step: {next_step}")
     if deadlines:
-        notes.append("- Fristen/Termine: " + ", ".join(str(d) for d in deadlines))
+        notes.append("- Deadlines/dates: " + ", ".join(str(d) for d in deadlines))
     if links:
-        notes.append("- Links: " + ", ".join(str(link) for link in links))
+        notes.append("- Important links: " + ", ".join(str(link) for link in links))
 
     if notes:
         lines.append("")
         lines.append("---")
         lines.append(
-            "Notizen (bitte vor dem Senden entfernen):"
+            "Notes (please remove before sending):"
         )
         lines.extend(notes)
 
@@ -106,7 +106,7 @@ def generate_draft_with_openai(
     instructions = (
         "Create a concise, high-quality interview reply draft. "
         "Use plain text only. "
-        "Keep placeholders [Name] and [Dein Name] for personalization. "
+        "Keep placeholders [Name] and [Your Name] for personalization. "
         "Do not invent facts beyond the provided data."
     )
 
@@ -272,7 +272,7 @@ def main() -> None:
     parser.add_argument(
         "--language",
         dest="language",
-        default="de",
+        default="en",
         help="Language for the generated draft.",
     )
     parser.add_argument(

@@ -127,5 +127,5 @@ def oauth_callback(request: Request, state: str, code: str) -> HTMLResponse:
 
     run_status_store.update(state="done", step="oauth", detail="Gmail OAuth completed")
     return HTMLResponse(
-        "<h2>OAuth abgeschlossen</h2><p>Du kannst dieses Fenster schließen.</p>"
+        "<h2>OAuth complete</h2><p>You can close this window.</p>"
     )

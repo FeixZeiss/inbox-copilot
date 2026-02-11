@@ -145,10 +145,10 @@ export default function App() {
         const payload = await res.json().catch(() => ({}));
         throw new Error(payload?.detail || "Upload failed");
       }
-      setUploadMessage("credentials.json gespeichert.");
+      setUploadMessage("credentials.json saved.");
       fetchSecretsStatus();
     } catch (err) {
-      setUploadMessage(err instanceof Error ? err.message : "Upload fehlgeschlagen.");
+      setUploadMessage(err instanceof Error ? err.message : "Upload failed.");
     } finally {
       event.target.value = "";
     }
@@ -173,11 +173,11 @@ export default function App() {
         const payload = await res.json().catch(() => ({}));
         throw new Error(payload?.detail || "Upload failed");
       }
-      setTokenUploadMessage("gmail_token.json gespeichert.");
+      setTokenUploadMessage("gmail_token.json saved.");
       fetchSecretsStatus();
     } catch (err) {
       setTokenUploadMessage(
-        err instanceof Error ? err.message : "Upload fehlgeschlagen."
+        err instanceof Error ? err.message : "Upload failed."
       );
     } finally {
       event.target.value = "";
@@ -203,11 +203,11 @@ export default function App() {
         const payload = await res.json().catch(() => ({}));
         throw new Error(payload?.detail || "Upload failed");
       }
-      setOpenAITokenUploadMessage("openai_token.json gespeichert.");
+      setOpenAITokenUploadMessage("openai_token.json saved.");
       fetchSecretsStatus();
     } catch (err) {
       setOpenAITokenUploadMessage(
-        err instanceof Error ? err.message : "Upload fehlgeschlagen."
+        err instanceof Error ? err.message : "Upload failed."
       );
     } finally {
       event.target.value = "";
@@ -221,23 +221,23 @@ export default function App() {
       const res = await fetch("/api/secrets/oauth", { method: "POST" });
       if (!res.ok) {
         const payload = await res.json().catch(() => ({}));
-        throw new Error(payload?.detail || "OAuth fehlgeschlagen");
+        throw new Error(payload?.detail || "OAuth failed");
       }
       const payload = await res.json();
       const url = payload?.auth_url;
       if (!url) {
-        throw new Error("OAuth-URL fehlt");
+        throw new Error("Missing OAuth URL");
       }
       // Try opening a popup; if blocked, show the URL so the user can continue.
       const popup = window.open(url, "_blank", "noopener,noreferrer");
       if (!popup) {
         setOauthUrl(url);
-        setOauthMessage("Popup blockiert. Bitte Link manuell öffnen.");
+        setOauthMessage("Popup blocked. Please open the link manually.");
       } else {
-        setOauthMessage("Bitte im neuen Fenster anmelden.");
+        setOauthMessage("Please sign in in the new window.");
       }
     } catch (err) {
-      setOauthMessage(err instanceof Error ? err.message : "OAuth fehlgeschlagen.");
+      setOauthMessage(err instanceof Error ? err.message : "OAuth failed.");
     }
   }
 
@@ -257,7 +257,7 @@ export default function App() {
             onClick={handleRun}
             disabled={status === STATUS.running}
           >
-            {status === STATUS.running ? "Running..." : "Run Once"}
+            {status === STATUS.running ? "Adding Labels..." : "Add Labels"}
           </button>
           <div className="status">
             Status: <strong>{status}</strong>
@@ -295,7 +295,7 @@ export default function App() {
           <div className="error-list">
             {statusInfo.recent_errors.slice(0, 10).map((item, index) => (
               <div key={`${item.message_id}-${index}`} className="error-item">
-                Fehler: {item.error} · E-Mail: {item.from || item.subject || item.message_id}
+                Error: {item.error} · Email: {item.from || item.subject || item.message_id}
               </div>
             ))}
           </div>
@@ -312,9 +312,9 @@ export default function App() {
         </div>
         <div className="setup-grid">
           <div>
-            <strong>1) Credentials hochladen</strong>
+            <strong>1) Upload credentials</strong>
             <p className="muted">
-              Die Datei wird nur lokal im Ordner secrets/ gespeichert.
+              The file is stored locally in the secrets/ folder only.
             </p>
             {/* Upload Google OAuth client credentials (credentials.json). */}
             <input
@@ -325,9 +325,9 @@ export default function App() {
             {uploadMessage && <div className="hint">{uploadMessage}</div>}
           </div>
           <div>
-            <strong>2) G_Mail-Token hochladen (optional)</strong>
+            <strong>2) Upload Gmail token (optional)</strong>
             <p className="muted">
-              Nutze das, wenn du schon einen gmail_token.json hast.
+              Use this if you already have a gmail_token.json file.
             </p>
             {/* Upload an existing Gmail token if already authenticated. */}
             <input
@@ -338,9 +338,9 @@ export default function App() {
             {tokenUploadMessage && <div className="hint">{tokenUploadMessage}</div>}
           </div>
           <div>
-            <strong>3) OpenAI Token hochladen (optional)</strong>
+            <strong>3) Upload OpenAI token (optional)</strong>
             <p className="muted">
-              Nutze das, wenn du schon einen OpenAI Token hast und intelligenten E-Mail versand möchtest.
+              Use this if you already have an OpenAI token and want intelligent email drafting.
             </p>
             {/* Upload an existing OpenAI token if already authenticated. */}
             <input
@@ -351,13 +351,13 @@ export default function App() {
             {openaiTokenUploadMessage && <div className="hint">{openaiTokenUploadMessage}</div>}
           </div>
           <div>
-            <strong>4) OAuth starten</strong>
+            <strong>4) Start OAuth</strong>
             <p className="muted">
-              Öffnet ein Browser-Fenster für Google Login und speichert den Token lokal.
+              Opens a browser window for Google sign-in and stores the token locally.
             </p>
             {/* Start OAuth if the token is not available yet. */}
             <button className="secondary" onClick={handleOAuth}>
-              Gmail verbinden
+              Connect Gmail
             </button>
             {oauthMessage && <div className="hint">{oauthMessage}</div>}
             {oauthUrl && (
@@ -370,11 +370,11 @@ export default function App() {
         <div className="status-line">
           {/* Quick status line for current secret availability. */}
           Credentials:{" "}
-          <strong>{secretsStatus?.credentials_present ? "vorhanden" : "fehlt"}</strong>
+          <strong>{secretsStatus?.credentials_present ? "present" : "missing"}</strong>
           {" · "}Token:{" "}
-          <strong>{secretsStatus?.token_present ? "vorhanden" : "fehlt"}</strong>
+          <strong>{secretsStatus?.token_present ? "present" : "missing"}</strong>
           {" · "}OpenAI Token:{" "}
-          <strong>{secretsStatus?.openai_token_present ? "vorhanden" : "fehlt"}</strong>
+          <strong>{secretsStatus?.openai_token_present ? "present" : "missing"}</strong>
         </div>
       </section>
 
@@ -400,18 +400,18 @@ export default function App() {
 
       <section className="panel">
         <div className="panel-header">
-          <h2>Letzte Aktionen</h2>
+          <h2>Latest Actions</h2>
         </div>
         {statusInfo?.recent_actions?.length ? (
           <div className="console">
             {statusInfo.recent_actions.map((a, i) => (
               <div key={i}>
-                E-Mail: {a.from || a.subject || a.message_id} erhalten, bekommt Label: {a.label}
+                Email: {a.from || a.subject || a.message_id} received, assigned label: {a.label}
               </div>
             ))}
           </div>
         ) : (
-          <div className="placeholder">Noch keine Aktionen.</div>
+          <div className="placeholder">No actions yet.</div>
         )}
       </section>
 
