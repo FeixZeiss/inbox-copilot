@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, asdict
 
+from email.utils import parseaddr
 from pathlib import Path
 from typing import Optional, Dict, Any, List, Tuple, Callable
 
@@ -43,13 +44,20 @@ def load_gmail_config() -> GmailClientConfig:
 
 
 def _bootstrap_query(days: int) -> str:
-    return f"newer_than:{days}d"
+    # Exclude drafts and own-sent messages from labeling runs.
+    return f"newer_than:{days}d -in:drafts -from:me"
 
 
 def _incremental_query(last_internal_date_ms: int) -> str:
     # Gmail "after:" expects seconds since epoch, not milliseconds.
     epoch_seconds = max(0, int(last_internal_date_ms / 1000))
-    return f"after:{epoch_seconds}"
+    # Exclude drafts and own-sent messages from labeling runs.
+    return f"after:{epoch_seconds} -in:drafts -from:me"
+
+
+def _normalized_address(value: str) -> str:
+    # Parse "Name <mail@domain>" safely and normalize for exact comparisons.
+    return parseaddr(value)[1].strip().lower()
 
 
 def get_message_ids_bootstrap(
@@ -77,6 +85,7 @@ def build_mail(client: GmailClient, message_id: str) -> Tuple[NormalizedEmail, D
     snippet = msg.get("snippet", "")
     body_text = extract_body_from_payload(payload)
     internal_date_ms = int(msg.get("internalDate") or 0)
+    label_ids = [str(x) for x in (msg.get("labelIds") or [])]
 
     email = NormalizedEmail(
         message_id=message_id,
@@ -86,6 +95,7 @@ def build_mail(client: GmailClient, message_id: str) -> Tuple[NormalizedEmail, D
         body_text=body_text,
         internal_date_ms=internal_date_ms,
         headers=headers,
+        label_ids=label_ids,
     )
     return email, headers
 
@@ -175,6 +185,7 @@ def run_once(
     cfg = load_gmail_config()
     client = GmailClient(cfg)
     client.connect()
+    own_email = _normalized_address(client.get_profile().get("emailAddress", ""))
     executor = default_executor(dry_run=False)
 
     # --- Decide bootstrap vs incremental ---
@@ -197,8 +208,8 @@ def run_once(
     seen = len(message_ids)
     log(f"[run] Found {seen} messages")
     report(
-        "processing",
-        detail=f"Processing 0/{seen}",
+        "load_messages",
+        detail=f"Loading message payloads 0/{seen}",
         metrics={
             "processed": processed,
             "message_ids_seen": seen,
@@ -207,11 +218,56 @@ def run_once(
         },
     )
 
-    # --- Process loop ---
+    # --- Load messages first, then process in chronological order ---
+    loaded_mails: List[NormalizedEmail] = []
     for mid in message_ids:
         mail: Optional[NormalizedEmail] = None
         try:
             mail, _headers = build_mail(client, mid)
+            loaded_mails.append(mail)
+        except KeyError as e:
+            # Message deleted/moved between list and fetch.
+            skipped_deleted += 1
+            log(f"[skip] {e}")
+        except Exception as e:
+            errors += 1
+            log(f"[error] {type(e).__name__}: {e}")
+            report(
+                "error",
+                detail=f"{type(e).__name__}: {e}",
+                error={
+                    "message_id": mid,
+                    "from": mail.from_email if mail else "",
+                    "subject": mail.subject if mail else "",
+                    "error": f"{type(e).__name__}: {e}",
+                },
+            )
+
+    # Oldest first so classification/actions follow timeline order.
+    loaded_mails.sort(key=lambda m: (m.internal_date_ms, m.message_id))
+    to_process = len(loaded_mails)
+    if to_process:
+        log("[run] Processing messages in chronological order (oldest to newest)")
+    report(
+        "processing",
+        detail=f"Processing 0/{to_process}",
+        metrics={
+            "processed": processed,
+            "message_ids_seen": seen,
+            "skipped_deleted": skipped_deleted,
+            "errors": errors,
+        },
+    )
+
+    for index, mail in enumerate(loaded_mails, start=1):
+        try:
+            # Safety guard: never label drafts, and never label mails sent by ourselves.
+            if "DRAFT" in {lbl.upper() for lbl in mail.label_ids}:
+                continue
+            from_addr = _normalized_address(mail.from_email)
+            if own_email and from_addr == own_email:
+                continue
+
             process_message(
                 client,
                 mail,
@@ -228,11 +284,6 @@ def run_once(
             if ts is not None:
                 latest_ts = ts if latest_ts is None else max(latest_ts, ts)
 
-        except KeyError as e:
-            # Message deleted/moved between list and fetch
-            skipped_deleted += 1
-            log(f"[skip] {e}")
-            continue
         except Exception as e:
             errors += 1
             log(f"[error] {type(e).__name__}: {e}")
@@ -240,17 +291,16 @@ def run_once(
                 "error",
                 detail=f"{type(e).__name__}: {e}",
                 error={
-                    "message_id": mid,
-                    "from": mail.from_email if mail else "",
-                    "subject": mail.subject if mail else "",
+                    "message_id": mail.message_id,
+                    "from": mail.from_email,
+                    "subject": mail.subject,
                     "error": f"{type(e).__name__}: {e}",
                 },
             )
-            continue
         finally:
             report(
                 "processing",
-                detail=f"Processing {processed}/{seen}",
+                detail=f"Processing {index}/{to_process}",
                 metrics={
                     "processed": processed,
                     "message_ids_seen": seen,

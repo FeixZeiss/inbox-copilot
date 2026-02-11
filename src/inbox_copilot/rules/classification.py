@@ -38,7 +38,7 @@ def classify_email(*, subject: str, from_email: str, body_text: str) -> RuleResu
 
     return RuleResult(
         category="no_fit",
-        labels=["NoFit"],
+        labels=[],
         confidence=0.2,
         notes=["No rule matched"],
         reason=None,
@@ -74,7 +74,7 @@ def _result_from_rule(rule_name: str, reason: str) -> RuleResult:
 
     return RuleResult(
         category="no_fit",
-        labels=["NoFit"],
+        labels=[],
         confidence=0.2,
         notes=[f"Unknown rule: {rule_name}"],
         reason=reason,

@@ -10,7 +10,9 @@ def actions_from_analysis(analysis: EmailAnalysis, message_id: str) -> List[Acti
     # Policy layer decides side effects based on analysis output.
     actions: List[Action] = []
 
-    for label in analysis.suggested_labels:
+    for label in sorted(set(analysis.suggested_labels)):
+        if not label:
+            continue
         actions.append(
             Action(
                 type=ActionType.ADD_LABEL,

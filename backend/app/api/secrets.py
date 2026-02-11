@@ -72,6 +72,15 @@ def upload_openai_token(file: UploadFile = File(...)) -> dict:
     target.write_bytes(content)
     return {"ok": True, "path": str(target)}
 
+@router.post("/secrets/openai_token/delete")
+def delete_openai_token() -> dict:
+    deleted: list[str] = []
+    for path in [SECRETS_DIR / "openai_token.json", SECRETS_DIR / "openai_token.txt"]:
+        if path.exists():
+            path.unlink()
+            deleted.append(str(path))
+    return {"ok": True, "deleted": deleted}
+
 
 @router.post("/secrets/oauth")
 def start_oauth(request: Request) -> dict:

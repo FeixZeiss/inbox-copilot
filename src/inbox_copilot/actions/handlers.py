@@ -57,12 +57,18 @@ class AnalyzeApplicationHandler(ActionHandler):
     def _load_openai_api_key() -> str | None:
         token_path = SECRETS_DIR / "openai_token.txt"
         if token_path.exists():
-            token = token_path.read_text(encoding="utf-8").strip()
+            try:
+                token = token_path.read_text(encoding="utf-8").strip()
+            except UnicodeDecodeError:
+                return None
             return token or None
 
         json_path = SECRETS_DIR / "openai_token.json"
         if json_path.exists():
-            payload = json.loads(json_path.read_text(encoding="utf-8"))
+            try:
+                payload = json.loads(json_path.read_text(encoding="utf-8"))
+            except (UnicodeDecodeError, json.JSONDecodeError):
+                return None
             token = payload.get("api_key") or payload.get("token") or payload.get("openai_api_key")
             return token or None
 
@@ -155,6 +161,13 @@ class AnalyzeApplicationHandler(ActionHandler):
             print(f"[ANALYZE_RESULT] message_id={action.message_id} json=<invalid>")
             return
 
+        # Keep original mail context so reply drafts can use full source text.
+        analysis["source_subject"] = subject
+        analysis["source_from"] = sender
+        analysis["source_snippet"] = snippet
+        analysis["source_body_text"] = body_text
+        analysis["source_message_id"] = action.message_id
+
         # Only persist interview-related results for now.
         if analysis.get("status") != "interview":
             print(f"[ANALYZE_RESULT] message_id={action.message_id} json={output_text}")
@@ -169,7 +182,7 @@ class AnalyzeApplicationHandler(ActionHandler):
             output_path = output_dir / f"{file_stem}-{action.message_id}.json"
 
         output_path.write_text(
-            json.dumps(analysis, indent=2, ensure_ascii=True),
+            json.dumps(analysis, indent=2, ensure_ascii=False),
             encoding="utf-8",
         )
         print(f"[ANALYZE_SAVED] message_id={action.message_id} path={output_path}")

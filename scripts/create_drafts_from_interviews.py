@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 from datetime import datetime, timezone
 from email.message import EmailMessage
 from pathlib import Path
@@ -11,6 +12,9 @@ from openai import OpenAI
 
 from inbox_copilot.config.paths import LOGS_DIR, SECRETS_DIR
 from inbox_copilot.gmail.client import GmailClient, GmailClientConfig
+from inbox_copilot.parsing.parser import extract_body_from_payload
+
+SIGNATURE = "Mit freundlichen Grüßen\nFelix Zeiß"
 
 
 def load_gmail_config() -> GmailClientConfig:
@@ -35,54 +39,123 @@ def load_gmail_config() -> GmailClientConfig:
     return cfg
 
 
-def build_subject(company: str | None, role: str | None) -> str:
-    company = company or "Interview"
+def _as_reply_subject(subject: str) -> str:
+    cleaned = subject.strip()
+    if not cleaned:
+        return "Re: Einladung zum Vorstellungsgespräch"
+    match = re.match(r"^(re|aw|sv)\s*:\s*(.*)$", cleaned, flags=re.IGNORECASE)
+    if match:
+        tail = match.group(2).strip()
+        if not tail:
+            return "Re: Einladung zum Vorstellungsgespräch"
+        return f"Re: {tail}"
+    return f"Re: {cleaned}"
+
+
+def build_subject(data: dict, generated_subject: str | None = None) -> str:
+    original_subject = str(data.get("source_subject") or data.get("subject") or "").strip()
+    if original_subject:
+        return _as_reply_subject(original_subject)
+    if generated_subject:
+        return _as_reply_subject(generated_subject)
+    company = data.get("company") or ""
+    role = data.get("role")
     if role:
-        return f"Interview: {company} - {role}"
-    return f"Interview: {company}"
+        return _as_reply_subject(f"Einladung zum Vorstellungsgespräch – {role}")
+    if company:
+        return _as_reply_subject(f"Einladung zum Vorstellungsgespräch bei {company}")
+    return _as_reply_subject("Einladung zum Vorstellungsgespräch")
+
+
+def extract_contact_name(data: dict) -> str | None:
+    from_header = str(data.get("source_from") or "").strip()
+    if not from_header:
+        return None
+    display = from_header.split("<", 1)[0].strip().strip('"').strip()
+    if not display or "@" in display:
+        return None
+    display = re.sub(r"\s+", " ", display)
+    display = re.sub(
+        r"^(frau|herr|mr\.?|ms\.?|dr\.?|prof\.?)\s+",
+        "",
+        display,
+        flags=re.IGNORECASE,
+    )
+    return display or None
+
+
+def personalize_salutation(body: str, data: dict) -> str:
+    name = extract_contact_name(data)
+    if not name:
+        return body
+    lines = body.splitlines()
+    if not lines:
+        return body
+    for idx, line in enumerate(lines):
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if "[Name]" in line:
+            lines[idx] = line.replace("[Name]", name)
+            break
+        if stripped in {"Hallo,", "Guten Tag,", "Sehr geehrte Damen und Herren,"}:
+            lines[idx] = f"Hallo {name},"
+            break
+        if stripped.startswith("Hallo ") and stripped.endswith(","):
+            break
+        lines.insert(idx, f"Hallo {name},")
+        break
+    return "\n".join(lines)
+
+
+def hydrate_source_context(client: GmailClient, data: dict) -> dict:
+    if data.get("source_body_text"):
+        return data
+    message_id = str(data.get("source_message_id") or "").strip()
+    if not message_id:
+        return data
+    try:
+        msg = client.get_message(message_id, fmt="full")
+    except Exception:
+        return data
+
+    payload = msg.get("payload", {})
+    headers = {h.get("name"): h.get("value") for h in payload.get("headers", [])}
+    enriched = dict(data)
+    enriched.setdefault("source_subject", headers.get("Subject", ""))
+    enriched.setdefault("source_from", headers.get("From", ""))
+    enriched.setdefault("source_snippet", msg.get("snippet", ""))
+    enriched.setdefault("source_body_text", extract_body_from_payload(payload))
+    return enriched
+
+
+def with_signature(body: str) -> str:
+    text = body.strip()
+    if text.endswith(SIGNATURE):
+        return text
+    return f"{text}\n\n{SIGNATURE}"
 
 
 def build_body(data: dict) -> str:
+    contact_name = extract_contact_name(data)
     role = data.get("role")
     action_required = bool(data.get("action_required"))
-    next_step = data.get("next_step")
-    deadlines = data.get("deadlines") or []
-    links = data.get("important_links") or []
 
     lines: list[str] = []
-    lines.append("Hello [Name],")
+    lines.append(f"Hallo {contact_name}," if contact_name else "Hallo,")
     lines.append("")
     if role:
         lines.append(
-            f"Thank you for the interview invitation for the {role} position."
+            f"vielen Dank für die Einladung zum Vorstellungsgespräch für die Position {role}."
         )
     else:
-        lines.append("Thank you for the interview invitation.")
+        lines.append("vielen Dank für die Einladung zum Vorstellungsgespräch.")
     if action_required:
-        lines.append("I am happy to confirm the appointment.")
+        lines.append("Ich bestätige den Termin gerne.")
     else:
-        lines.append("I am looking forward to the conversation.")
-    lines.append("")
-    lines.append("Best regards,")
-    lines.append("[Your Name]")
+        lines.append("Ich freue mich auf das Gespräch.")
 
-    notes: list[str] = []
-    if next_step:
-        notes.append(f"- Next step: {next_step}")
-    if deadlines:
-        notes.append("- Deadlines/dates: " + ", ".join(str(d) for d in deadlines))
-    if links:
-        notes.append("- Important links: " + ", ".join(str(link) for link in links))
-
-    if notes:
-        lines.append("")
-        lines.append("---")
-        lines.append(
-            "Notes (please remove before sending):"
-        )
-        lines.extend(notes)
-
-    return "\n".join(lines)
+    return with_signature("\n".join(lines))
 
 
 def generate_draft_with_openai(
@@ -104,10 +177,13 @@ def generate_draft_with_openai(
     }
 
     instructions = (
-        "Create a concise, high-quality interview reply draft. "
-        "Use plain text only. "
-        "Keep placeholders [Name] and [Your Name] for personalization. "
-        "Do not invent facts beyond the provided data."
+        "Erstelle eine kurze, hochwertige Antwort auf eine Interview-Einladung. "
+        "Schreibe ausschließlich auf Deutsch und im Klartext. "
+        "Sprich den Ansprechpartner nach Möglichkeit direkt mit Namen an. "
+        "Wenn kein Name erkennbar ist, beginne mit 'Hallo,'. "
+        "Der Text MUSS exakt mit diesen zwei Zeilen enden: "
+        "'Mit freundlichen Grüßen' und 'Felix Zeiß'. "
+        "Erfinde keine Fakten, die nicht im Originaltext stehen."
     )
 
     resp = client.responses.create(
@@ -120,9 +196,13 @@ def generate_draft_with_openai(
             {
                 "role": "user",
                 "content": (
-                    f"Language: {language}\n"
-                    f"Tone: {tone}\n"
-                    f"Data: {json.dumps(data, ensure_ascii=True)}"
+                    f"LANGUAGE:\n{language}\n\n"
+                    f"TONE:\n{tone}\n\n"
+                    f"ANALYSE_DATEN:\n{json.dumps(data, ensure_ascii=False)}\n\n"
+                    f"ORIGINAL_SUBJECT:\n{data.get('source_subject', '')}\n\n"
+                    f"ORIGINAL_FROM:\n{data.get('source_from', '')}\n\n"
+                    f"ORIGINAL_SNIPPET:\n{data.get('source_snippet', '')}\n\n"
+                    f"ORIGINAL_MAILTEXT_VOLLSTAENDIG:\n{data.get('source_body_text', '')}\n"
                 ),
             },
         ],
@@ -149,7 +229,7 @@ def generate_draft_with_openai(
     if not subject or not body:
         raise RuntimeError("OpenAI response missing subject or body.")
 
-    return subject, body
+    return subject, with_signature(personalize_salutation(body, data))
 
 
 def create_draft_message(
@@ -192,9 +272,7 @@ def process_file(
     if data.get("status") != "interview":
         print(f"[SKIP] {json_path.name} status={data.get('status')}")
         return
-    if not bool(data.get("action_required")):
-        print(f"[SKIP] {json_path.name} action_required=False")
-        return
+    data = hydrate_source_context(client, data)
 
     if use_openai:
         subject, body = generate_draft_with_openai(
@@ -203,8 +281,9 @@ def process_file(
             language=language,
             tone=tone,
         )
+        subject = build_subject(data, generated_subject=subject)
     else:
-        subject = build_subject(data.get("company"), data.get("role"))
+        subject = build_subject(data)
         body = build_body(data)
     msg = create_draft_message(profile_email, subject, body, to_email)
 
@@ -219,10 +298,12 @@ def process_file(
         "source_file": json_path.name,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
-    marker_path.write_text(
-        json.dumps(marker_payload, indent=2, ensure_ascii=True),
-        encoding="utf-8",
-    )
+    # Safety guard: marker files are persisted only for real draft creation.
+    if not dry_run:
+        marker_path.write_text(
+            json.dumps(marker_payload, indent=2, ensure_ascii=True),
+            encoding="utf-8",
+        )
     print(f"[DRAFT] {json_path.name} -> draft_id={marker_payload['draft_id']}")
 
 
@@ -272,7 +353,7 @@ def main() -> None:
     parser.add_argument(
         "--language",
         dest="language",
-        default="en",
+        default="de",
         help="Language for the generated draft.",
     )
     parser.add_argument(

@@ -11,6 +11,20 @@ function formatCount(value) {
   return typeof value === "number" ? value.toString() : "-";
 }
 
+function formatRecentAction(action) {
+  if (action?.type === "draft") {
+    const mode = action.mode === "created"
+      ? "created"
+      : action.mode === "skipped_existing"
+        ? "skipped (existing marker)"
+        : "dry-run";
+    const engine = action.using_openai ? "OpenAI" : "template";
+    const subject = action.subject ? ` -> ${action.subject}` : "";
+    return `Draft ${mode}: ${action.source_file}${subject} (${engine})`;
+  }
+  return `Email: ${action.from || action.subject || action.message_id} received, assigned label: ${action.label}`;
+}
+
 export default function App() {
   // UI state: run lifecycle and current backend snapshots.
   const [status, setStatus] = useState(STATUS.idle);
@@ -24,6 +38,9 @@ export default function App() {
   const [openaiTokenUploadMessage, setOpenAITokenUploadMessage] = useState("");
   const [oauthMessage, setOauthMessage] = useState("");
   const [oauthUrl, setOauthUrl] = useState("");
+  const [draftDryRun, setDraftDryRun] = useState(true);
+  const [draftMessage, setDraftMessage] = useState("");
+  const [activeJob, setActiveJob] = useState(null);
   const [logs, setLogs] = useState([])
 
   async function fetchSecretsStatus() {
@@ -103,8 +120,10 @@ export default function App() {
   async function handleRun() {
     // Optimistically mark as running; backend will confirm via status API.
     setStatus(STATUS.running);
+    setActiveJob("run");
     setSummary(null);
     setError("");
+    setDraftMessage("");
     fetchStatus();
 
     try {
@@ -119,10 +138,70 @@ export default function App() {
       // Store the final summary so the UI can show totals.
       setSummary(payload.summary || null);
       setStatus(STATUS.done);
+      setActiveJob(null);
       fetchStatus();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unknown error");
       setStatus(STATUS.error);
+      setActiveJob(null);
+    }
+  }
+
+  async function handleCreateDrafts() {
+    setStatus(STATUS.running);
+    setActiveJob("drafts");
+    setError("");
+    setDraftMessage("");
+    fetchStatus();
+
+    try {
+      const res = await fetch("/api/drafts/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ dry_run: draftDryRun }),
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const detail = payload?.detail;
+        if (detail?.code === "openai_token_invalid") {
+          const msg = detail?.message || "The uploaded OpenAI token is invalid.";
+          const shouldDelete = window.confirm(
+            `${msg}\n\nDo you want to delete the uploaded OpenAI token now?`
+          );
+          if (shouldDelete) {
+            const deleteRes = await fetch("/api/secrets/openai_token/delete", {
+              method: "POST",
+            });
+            const deletePayload = await deleteRes.json().catch(() => ({}));
+            if (!deleteRes.ok || !deletePayload?.ok) {
+              throw new Error("Token is invalid. Failed to delete the token file.");
+            }
+            fetchSecretsStatus();
+            throw new Error("OpenAI token is invalid and was deleted. Please upload a valid token.");
+          }
+          throw new Error("OpenAI token is invalid. Token was kept.");
+        }
+        throw new Error(
+          typeof detail === "string" ? detail : detail?.message || `Request failed (${res.status})`
+        );
+      }
+      if (!payload?.ok) {
+        throw new Error("Backend returned ok=false");
+      }
+
+      const s = payload.summary || {};
+      const modeLabel = payload.dry_run ? "dry-run" : "real run";
+      const engine = payload.used_openai ? "OpenAI" : "template mode";
+      setDraftMessage(
+        `Drafts finished (${modeLabel}, ${engine}): eligible=${s.eligible ?? 0}, created=${s.created ?? 0}, dry_run=${s.dry_run ?? 0}, errors=${s.errors ?? 0}.`
+      );
+      setStatus(STATUS.done);
+      setActiveJob(null);
+      fetchStatus();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unknown error");
+      setStatus(STATUS.error);
+      setActiveJob(null);
     }
   }
 
@@ -257,12 +336,29 @@ export default function App() {
             onClick={handleRun}
             disabled={status === STATUS.running}
           >
-            {status === STATUS.running ? "Adding Labels..." : "Add Labels"}
+            {status === STATUS.running && activeJob === "run" ? "Adding Labels..." : "Add Labels"}
           </button>
+          <button
+            className="secondary"
+            onClick={handleCreateDrafts}
+            disabled={status === STATUS.running}
+          >
+            {status === STATUS.running && activeJob === "drafts" ? "Creating Drafts..." : "Create Drafts"}
+          </button>
+          <label className="checkbox-inline">
+            <input
+              type="checkbox"
+              checked={draftDryRun}
+              onChange={(event) => setDraftDryRun(event.target.checked)}
+              disabled={status === STATUS.running}
+            />
+            Dry run (no draft creation)
+          </label>
           <div className="status">
             Status: <strong>{status}</strong>
             {statusInfo?.detail ? ` — ${statusInfo.detail}` : ""}
           </div>
+          {draftMessage && <div className="hint">{draftMessage}</div>}
         </div>
       </header>
 
@@ -406,7 +502,7 @@ export default function App() {
           <div className="console">
             {statusInfo.recent_actions.map((a, i) => (
               <div key={i}>
-                Email: {a.from || a.subject || a.message_id} received, assigned label: {a.label}
+                {formatRecentAction(a)}
               </div>
             ))}
           </div>

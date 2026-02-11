@@ -47,13 +47,12 @@ class NewsletterRule(BaseRule):
         from_ = self.sender(mail)
         subj = self.subject(mail)
         snip = self.snippet(mail)
-
-        return (
-            self.contains_any(from_, ["newsletter", "noreply", "no-reply", "mailchimp"])
-            or self.contains_any(subj, ["newsletter", "weekly", "digest"])
-            or self.regex(snip, r"\b(unsubscribe|abbestellen)\b")
-            , "NEWSLETTER"
-        )
+        sender_signal = self.contains_any(from_, ["newsletter", "mailchimp", "substack", "getrevue"])
+        subject_signal = self.contains_any(subj, ["newsletter", "weekly", "digest", "roundup"])
+        unsubscribe_signal = self.regex(snip, r"\b(unsubscribe|abbestellen|newsletter)\b")
+        # Bare no-reply addresses are often transactional; require stronger signals.
+        matched = sender_signal or subject_signal or unsubscribe_signal
+        return matched, "NEWSLETTER"
 
     def actions(self, mail: MailItem, type: str) -> Iterable[Action]:
         yield Action(
@@ -180,6 +179,23 @@ class JobAlertRule(BaseRule):
         "m/w/d",
     )
 
+    # Strong, direct application process signals for fallback classification.
+    DIRECT_APPLICATION_SIGNALS = (
+        "bewerbung",
+        "bewerbungsunterlagen",
+        "application",
+        "application received",
+        "candidate",
+        "interview",
+        "vorstellungsgespräch",
+        "vorstellungsgespraech",
+        "recruiter",
+        "talent acquisition",
+        "lebenslauf",
+        "cv",
+        "resume",
+    )
+
     # Application document wording (helps for mails saying "Unterlagen" instead of "Bewerbung")
     APPLICATION_DOC_WORDS = (
         "unterlagen",
@@ -249,11 +265,17 @@ class JobAlertRule(BaseRule):
         ):
             return True, self.INTERVIEW_REASON
 
-        # 7) Recruiting context without clear status -> still an application, but NoFit.
+        # 7) Fallback only on strong application-process signals.
         if (
-            self.contains_any(hay, self.RECRUITING_WORDS)
-            or self.contains_any(hay, self.APPLICATION_DOC_WORDS)
-            or self.contains_any(hay, self.ATS_MARKERS)
+            self.contains_any(hay, self.DIRECT_APPLICATION_SIGNALS)
+            or (
+                self.contains_any(hay, self.ATS_MARKERS)
+                and self.contains_any(hay, self.RECRUITING_WORDS)
+            )
+            or (
+                self.contains_any(hay, self.APPLICATION_DOC_WORDS)
+                and self.contains_any(hay, self.RECRUITING_WORDS)
+            )
         ):
             return True, self.NOFIT_REASON
 

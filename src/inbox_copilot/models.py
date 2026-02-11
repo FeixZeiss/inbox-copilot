@@ -13,6 +13,7 @@ class NormalizedEmail:
     body_text: str
     internal_date_ms: int
     headers: Dict[str, str] = field(default_factory=dict)
+    label_ids: List[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)

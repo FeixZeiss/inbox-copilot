@@ -7,10 +7,12 @@ from fastapi.staticfiles import StaticFiles
 
 from backend.app.api.run import router as run_router
 from backend.app.api.secrets import router as secrets_router
+from backend.app.api.drafts import router as drafts_router
 
 app = FastAPI(title="inbox-copilot API")
 app.include_router(run_router, prefix="/api")
 app.include_router(secrets_router, prefix="/api")
+app.include_router(drafts_router, prefix="/api")
 
 repo_root = Path(__file__).resolve().parents[2]
 frontend_dist = repo_root / "frontend" / "dist"

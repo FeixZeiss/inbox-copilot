@@ -113,6 +113,14 @@ p {
   font-size: 0.95rem;
 }
 
+.checkbox-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
 .panel {
   background: var(--panel);
   border: 1px solid var(--border);
