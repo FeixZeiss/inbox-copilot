@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import List, Tuple
+from typing import List
 
 from inbox_copilot.rules.rules import GoogleSecurityAlertRule, JobAlertRule, NewsletterRule
 

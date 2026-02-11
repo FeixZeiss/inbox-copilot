@@ -25,5 +25,5 @@ if frontend_dist.exists():
         return FileResponse(frontend_dist / "index.html")
 
     @app.get("/{path:path}", include_in_schema=False)
-    def spa_fallback(path: str) -> FileResponse:
+    def spa_fallback(_path: str) -> FileResponse:
         return FileResponse(frontend_dist / "index.html")

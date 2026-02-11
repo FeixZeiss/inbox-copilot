@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from pathlib import Path
-
 from fastapi import APIRouter, File, HTTPException, UploadFile, Request
 from fastapi.responses import HTMLResponse
 from google_auth_oauthlib.flow import InstalledAppFlow
@@ -19,13 +17,14 @@ _oauth_flows: dict[str, InstalledAppFlow] = {}
 def secrets_status() -> dict:
     credentials_path = SECRETS_DIR / "credentials.json"
     token_path = SECRETS_DIR / "gmail_token.json"
-    openai_token_path = SECRETS_DIR / "openai_token.json"
+    openai_token_json_path = SECRETS_DIR / "openai_token.json"
+    openai_token_txt_path = SECRETS_DIR / "openai_token.txt"
     return {
         "ok": True,
         "secrets_dir": str(SECRETS_DIR),
         "credentials_present": credentials_path.exists(),
         "token_present": token_path.exists(),
-        "openai_token_present": openai_token_path.exists(),
+        "openai_token_present": openai_token_json_path.exists() or openai_token_txt_path.exists(),
     }
 
 

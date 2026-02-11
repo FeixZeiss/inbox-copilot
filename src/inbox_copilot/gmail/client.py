@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+import base64
 from dataclasses import dataclass
 from email.message import EmailMessage
-import base64
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -14,7 +14,7 @@ from googleapiclient.errors import HttpError
 
 from inbox_copilot.gmail.LabelColors import LABEL_COLORS
 
-# Needs modify to add/remove labels (messages.modify); include readonly to avoid scope mismatch
+# `gmail.modify` is required for labeling/archiving/draft actions.
 SCOPES = [
     "https://www.googleapis.com/auth/gmail.modify",
     "https://www.googleapis.com/auth/gmail.readonly",
@@ -70,7 +70,7 @@ class GmailClient:
         self._label_cache.clear()
 
     @property
-    def service(self):
+    def service(self) -> Any:
         if self._service is None:
             raise RuntimeError("GmailClient is not connected. Call connect() first.")
         return self._service
@@ -101,24 +101,23 @@ class GmailClient:
                 .get(userId=self._cfg.user_id, id=message_id, format=fmt)
                 .execute()
             )
-        except HttpError as e:
-            # Skip messages that no longer exist (deleted/moved) for this mailbox
-            if getattr(e, "resp", None) and e.resp.status == 404:
-                raise KeyError(f"Message not found: {message_id}") from e
-        raise
+        except HttpError as exc:
+            # Treat deleted/moved messages as a soft skip for incremental runs.
+            if getattr(exc, "resp", None) and exc.resp.status == 404:
+                raise KeyError(f"Message not found: {message_id}") from exc
+            raise
 
     def get_profile(self) -> Dict[str, Any]:
         """Get the Gmail profile of the authenticated user."""
         return self.service.users().getProfile(userId=self._cfg.user_id).execute()
-    
+
     def remove_label(self, message_id: str, label_name: str) -> None:
-        label_id = self.get_or_create_label_id(label_name)  # or get_label_id + error if missing
+        label_id = self.get_or_create_label_id(label_name)
         self.service.users().messages().modify(
             userId=self._cfg.user_id,
             id=message_id,
             body={"removeLabelIds": [label_id]},
         ).execute()
-
 
     # -----------------------------
     # Label helpers (name -> id)
@@ -135,7 +134,7 @@ class GmailClient:
         if not self._label_cache:
             self._refresh_label_cache()
         return self._label_cache.get(label_name)
-    
+
     def get_or_create_label_id(self, label_name: str) -> str:
         label_id = self._get_label_id(label_name)
         if label_id:
@@ -143,7 +142,6 @@ class GmailClient:
             self._update_label_color(label_id, label_name)
             return label_id
         return self._create_label(label_name)
-
 
     def _create_label(self, label_name: str) -> str:
         body = {
@@ -167,7 +165,7 @@ class GmailClient:
         label_id = created["id"]
         self._label_cache[label_name] = label_id
         return label_id
-    
+
     def _update_label_color(self, label_id: str, label_name: str) -> None:
         color = LABEL_COLORS.get(label_name)
         if not color:

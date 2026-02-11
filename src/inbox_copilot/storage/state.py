@@ -7,7 +7,7 @@ from typing import Optional
 @dataclass
 class AppState:
     # Placeholder for Gmail History API tracking (not used yet).
-    last_history_TIME: Optional[str] = None
+    last_history_time: Optional[str] = None
     last_internal_date_ms: Optional[int] = None
     # Message IDs already processed at the latest timestamp (same-second dedupe cursor).
     last_message_ids_at_latest_ts: list[str] = field(default_factory=list)
@@ -19,7 +19,8 @@ def load_state(path: Path) -> AppState:
     data = json.loads(path.read_text(encoding="utf-8"))
     # Keep load resilient to legacy/extra fields.
     return AppState(
-        last_history_TIME=data.get("last_history_TIME"),
+        # Backward compatibility: keep reading the legacy key if present.
+        last_history_time=data.get("last_history_time") or data.get("last_history_TIME"),
         last_internal_date_ms=data.get("last_internal_date_ms"),
         last_message_ids_at_latest_ts=list(data.get("last_message_ids_at_latest_ts") or []),
         runs=int(data.get("runs") or 0),

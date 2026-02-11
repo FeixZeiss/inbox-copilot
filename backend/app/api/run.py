@@ -1,5 +1,6 @@
 # backend/app/api/run.py
 from pathlib import Path
+from typing import Any
 from fastapi import APIRouter
 from starlette.concurrency import run_in_threadpool
 
@@ -16,31 +17,31 @@ async def run_endpoint() -> dict:
 
     run_status_store.update(state="running", step="starting", detail="Starting run", metrics={})
 
-    def progress_cb(step: str, payload: dict) -> None:
-        detail = payload.get("detail")
-        update_fields = {
+    def progress_cb(step: str, event: dict[str, Any]) -> None:
+        detail = event.get("detail")
+        status_update = {
             "state": "running",
             "step": step,
             "detail": detail,
         }
-        
-        action = payload.get("action")
+
+        action = event.get("action")
         if action:
             current = run_status_store.snapshot().get("recent_actions", [])
-            # Neueste oben, max 50 Eintraege
+            # Keep newest actions first and cap memory/response size.
             updated = [action] + current
-            update_fields["recent_actions"] = updated[:50]
+            status_update["recent_actions"] = updated[:50]
 
-        error = payload.get("error")
+        error = event.get("error")
         if error:
             current = run_status_store.snapshot().get("recent_errors", [])
             # Keep most recent errors first, max 50 entries.
             updated = [error] + current
-            update_fields["recent_errors"] = updated[:50]
+            status_update["recent_errors"] = updated[:50]
 
-        if "metrics" in payload:
-            update_fields["metrics"] = payload.get("metrics") or {}
-        run_status_store.update(**update_fields)
+        if "metrics" in event:
+            status_update["metrics"] = event.get("metrics") or {}
+        run_status_store.update(**status_update)
 
     try:
         # Run blocking Gmail processing in a worker thread so FastAPI stays responsive.

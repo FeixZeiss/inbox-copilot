@@ -233,21 +233,21 @@ def run_once(
         try:
             mail, _headers = build_mail(client, mid)
             loaded_mails.append(mail)
-        except KeyError as e:
+        except KeyError as exc:
             # Message deleted/moved between list and fetch.
             skipped_deleted += 1
-            log(f"[skip] {e}")
-        except Exception as e:
+            log(f"[skip] {exc}")
+        except Exception as exc:
             errors += 1
-            log(f"[error] {type(e).__name__}: {e}")
+            log(f"[error] {type(exc).__name__}: {exc}")
             report(
                 "error",
-                detail=f"{type(e).__name__}: {e}",
+                detail=f"{type(exc).__name__}: {exc}",
                 error={
                     "message_id": mid,
                     "from": mail.from_email if mail else "",
                     "subject": mail.subject if mail else "",
-                    "error": f"{type(e).__name__}: {e}",
+                    "error": f"{type(exc).__name__}: {exc}",
                 },
             )
 
@@ -311,17 +311,17 @@ def run_once(
                 elif ts == latest_ts:
                     latest_ids_at_ts.add(mail.message_id)
 
-        except Exception as e:
+        except Exception as exc:
             errors += 1
-            log(f"[error] {type(e).__name__}: {e}")
+            log(f"[error] {type(exc).__name__}: {exc}")
             report(
                 "error",
-                detail=f"{type(e).__name__}: {e}",
+                detail=f"{type(exc).__name__}: {exc}",
                 error={
                     "message_id": mail.message_id,
                     "from": mail.from_email,
                     "subject": mail.subject,
-                    "error": f"{type(e).__name__}: {e}",
+                    "error": f"{type(exc).__name__}: {exc}",
                 },
             )
         finally:

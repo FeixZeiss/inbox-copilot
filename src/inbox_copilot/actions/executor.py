@@ -38,10 +38,10 @@ class ActionExecutor:
 
             try:
                 handler.handle(client, action)
-            except Exception as e:
+            except Exception as exc:
                 print(
                     f"[ERROR] Action failed type={action.type} message_id={action.message_id} "
-                    f"reason={action.reason} err={e}"
+                    f"reason={action.reason} err={exc}"
                 )
                 if not self.continue_on_error:
                     raise
@@ -53,8 +53,7 @@ def default_executor(*, dry_run: bool = False) -> ActionExecutor:
             ActionType.PRINT: PrintHandler(),
             ActionType.ADD_LABEL: AddLabelHandler(),
             ActionType.ARCHIVE: ArchiveHandler(),
-            #ActionType.REMOVE_LABEL: AddLabelHandler(),  # Placeholder, implement RemoveLabelHandler
-            ActionType.ANALYZE_APPLICATION: AnalyzeApplicationHandler(),          # Placeholder, implement AnalyzeHandler    
+            ActionType.ANALYZE_APPLICATION: AnalyzeApplicationHandler(),
         },
         dry_run=dry_run,
     )

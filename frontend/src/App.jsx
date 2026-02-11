@@ -54,7 +54,6 @@ export default function App() {
   const [draftSummary, setDraftSummary] = useState(null);
   const [lastSummaryAt, setLastSummaryAt] = useState(null);
   const [activeJob, setActiveJob] = useState(null);
-  const [logs, setLogs] = useState([])
 
   async function fetchSecretsStatus() {
     try {
@@ -122,19 +121,6 @@ export default function App() {
     const timer = setInterval(fetchStatus, 1000);
     return () => clearInterval(timer);
   }, [status]);
-
-  useEffect(() => {
-    const originalLog = console.log;
-
-    console.log = (...args) => {
-      setLogs((prev) => [...prev, args.join(" ")]);
-      originalLog(...args);
-    };
-
-    return () => {
-      console.log = originalLog;
-    };
-  }, []);
 
   async function handleRun() {
     // Optimistically mark as running; backend will confirm via status API.

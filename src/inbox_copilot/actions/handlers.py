@@ -30,28 +30,23 @@ class AddLabelHandler(ActionHandler):
             raise ValueError("ADD_LABEL requires label_name")
 
         # Ensure the label exists before applying it to the message.
-        label_ID = client.get_or_create_label_id(action.label_name)
-        if not label_ID:
+        label_id = client.get_or_create_label_id(action.label_name)
+        if not label_id:
             raise ValueError(f"Failed to get or create label: {action.label_name}") 
         
         client.add_label(action.message_id, action.label_name)
-        #client._update_label_color(label_ID, action.label_name)
-        #print(f"[DEBUG] Ensured label exists: {action.label_name} (id={label_ID})")
-
         print(f"[LABEL] message_id={action.message_id} label={action.label_name} reason={action.reason}")
 
 
 class ArchiveHandler(ActionHandler):
     def handle(self, client: GmailClient, action: Action) -> None:
-        # You need a method like:
-        # client.archive(message_id)
         client.archive(action.message_id)
         print(f"[ARCHIVE] message_id={action.message_id} reason={action.reason}")
 
 class AnalyzeApplicationHandler(ActionHandler):
     def __init__(self) -> None:
         api_key = self._load_openai_api_key()
-        self.client_ai = OpenAI(api_key=api_key) if api_key else OpenAI()
+        self.openai_client = OpenAI(api_key=api_key) if api_key else OpenAI()
 
     @staticmethod
     def _load_openai_api_key() -> str | None:
@@ -118,7 +113,7 @@ class AnalyzeApplicationHandler(ActionHandler):
 
 
         # Keep the prompt strict: we only accept JSON for automation.
-        resp = self.client_ai.responses.create(
+        resp = self.openai_client.responses.create(
             model="gpt-5.2",
             input=[
                 {

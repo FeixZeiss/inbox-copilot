@@ -29,7 +29,7 @@ class GoogleSecurityAlertRule(BaseRule):
 
         return is_google_sender and is_security_topic, "SECURITY_ALERT"
 
-    def actions(self, mail: MailItem, type: str) -> Iterable[Action]:
+    def actions(self, mail: MailItem, reason: str) -> Iterable[Action]:
         yield Action(
             type=ActionType.ADD_LABEL,
             message_id=mail.id,
@@ -54,7 +54,7 @@ class NewsletterRule(BaseRule):
         matched = sender_signal or subject_signal or unsubscribe_signal
         return matched, "NEWSLETTER"
 
-    def actions(self, mail: MailItem, type: str) -> Iterable[Action]:
+    def actions(self, mail: MailItem, reason: str) -> Iterable[Action]:
         yield Action(
             type=ActionType.ADD_LABEL,
             message_id=mail.id,
@@ -282,14 +282,14 @@ class JobAlertRule(BaseRule):
         return False, self.NOFIT_REASON
 
 
-    def actions(self, mail: MailItem, type: str) -> Iterable[Action]:
+    def actions(self, mail: MailItem, reason: str) -> Iterable[Action]:
         label_map = {
             self.CONFIRM_REASON: "Confirmation",
             self.INTERVIEW_REASON: "Interview",
             self.REJECT_REASON: "Rejection",
             self.NOFIT_REASON: "NoFit",
         }
-        label_suffix = label_map.get(type, type)
+        label_suffix = label_map.get(reason, reason)
 
         yield Action(
             type=ActionType.ADD_LABEL,
@@ -318,7 +318,7 @@ class NoFitRule(BaseRule):
     def match(self, mail: MailItem) -> tuple[bool, str]:
         return True, "NO_FIT"
 
-    def actions(self, mail: MailItem, type: str) -> Iterable[Action]:
+    def actions(self, mail: MailItem, reason: str) -> Iterable[Action]:
         yield Action(
             type=ActionType.ADD_LABEL,
             message_id=mail.id,
