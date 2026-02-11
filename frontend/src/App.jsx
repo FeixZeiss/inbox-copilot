@@ -11,18 +11,29 @@ function formatCount(value) {
   return typeof value === "number" ? value.toString() : "-";
 }
 
-function formatRecentAction(action) {
+function getRecentActionView(action) {
   if (action?.type === "draft") {
     const mode = action.mode === "created"
-      ? "created"
+      ? "Draft created"
       : action.mode === "skipped_existing"
-        ? "skipped (existing marker)"
-        : "dry-run";
-    const engine = action.using_openai ? "OpenAI" : "template";
-    const subject = action.subject ? ` -> ${action.subject}` : "";
-    return `Draft ${mode}: ${action.source_file}${subject} (${engine})`;
+        ? "Skipped (existing marker)"
+        : "Dry run";
+    const engine = action.using_openai ? "OpenAI" : "Template";
+    return {
+      kind: "draft",
+      title: mode,
+      primary: action.subject || action.source_file || action.message_id || "Draft action",
+      secondary: action.source_file ? `Source: ${action.source_file}` : null,
+      badges: [engine, action.draft_id ? `Draft ID ${action.draft_id}` : null].filter(Boolean),
+    };
   }
-  return `Email: ${action.from || action.subject || action.message_id} received, assigned label: ${action.label}`;
+  return {
+    kind: "label",
+    title: "Label applied",
+    primary: action.subject || action.from || action.message_id || "Email action",
+    secondary: action.from ? `From: ${action.from}` : action.message_id ? `Message: ${action.message_id}` : null,
+    badges: [action.label ? `Label: ${action.label}` : null].filter(Boolean),
+  };
 }
 
 export default function App() {
@@ -499,12 +510,26 @@ export default function App() {
           <h2>Latest Actions</h2>
         </div>
         {statusInfo?.recent_actions?.length ? (
-          <div className="console">
-            {statusInfo.recent_actions.map((a, i) => (
-              <div key={i}>
-                {formatRecentAction(a)}
-              </div>
-            ))}
+          <div className="action-list">
+            {statusInfo.recent_actions.map((a, i) => {
+              const view = getRecentActionView(a);
+              return (
+                <div key={`${view.kind}-${i}`} className={`action-card action-${view.kind}`}>
+                  <div className="action-head">
+                    <strong>{view.title}</strong>
+                    {view.badges?.length ? (
+                      <div className="action-badges">
+                        {view.badges.map((badge) => (
+                          <span key={badge} className="action-badge">{badge}</span>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                  <div className="action-primary">{view.primary}</div>
+                  {view.secondary ? <div className="action-secondary">{view.secondary}</div> : null}
+                </div>
+              );
+            })}
           </div>
         ) : (
           <div className="placeholder">No actions yet.</div>

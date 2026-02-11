@@ -172,11 +172,14 @@ def run_once(
     skipped_deleted = 0
     errors = 0
     latest_ts: Optional[int] = None
+    latest_ids_at_ts: set[str] = set()
     seen = 0
+    fetched = 0
 
     # --- Load state ---
     report("load_state", detail="Loading state")
     st = load_state(state_path)
+    already_processed_at_latest_ts = set(st.last_message_ids_at_latest_ts or [])
 
     logs_dir.mkdir(parents=True, exist_ok=True)
 
@@ -199,17 +202,22 @@ def run_once(
         )
     else:
         report("fetch_messages", detail="Fetching messages (incremental)")
+        cursor_ms = st.last_internal_date_ms
+        # Legacy state migration: if we only have a timestamp (no ID cursor yet),
+        # advance one second to avoid repeatedly reprocessing the last message.
+        if cursor_ms is not None and not st.last_message_ids_at_latest_ts:
+            cursor_ms += 1000
         message_ids = get_message_ids_since(
             client,
-            last_internal_date_ms=st.last_internal_date_ms,
+            last_internal_date_ms=cursor_ms or 0,
             max_results=max_results,
         )
 
-    seen = len(message_ids)
-    log(f"[run] Found {seen} messages")
+    fetched = len(message_ids)
+    log(f"[run] Found {fetched} messages")
     report(
         "load_messages",
-        detail=f"Loading message payloads 0/{seen}",
+        detail=f"Loading message payloads 0/{fetched}",
         metrics={
             "processed": processed,
             "message_ids_seen": seen,
@@ -245,9 +253,31 @@ def run_once(
 
     # Oldest first so classification/actions follow timeline order.
     loaded_mails.sort(key=lambda m: (m.internal_date_ms, m.message_id))
-    to_process = len(loaded_mails)
+
+    # Build an eligible list first so "Seen" only reflects actually processable mails.
+    eligible_mails: List[NormalizedEmail] = []
+    for mail in loaded_mails:
+        if st.last_internal_date_ms is not None:
+            if mail.internal_date_ms < st.last_internal_date_ms:
+                continue
+            if (
+                mail.internal_date_ms == st.last_internal_date_ms
+                and mail.message_id in already_processed_at_latest_ts
+            ):
+                continue
+        if "DRAFT" in {lbl.upper() for lbl in mail.label_ids}:
+            continue
+        from_addr = _normalized_address(mail.from_email)
+        if own_email and from_addr == own_email:
+            continue
+        eligible_mails.append(mail)
+
+    seen = len(eligible_mails)
+    to_process = seen
     if to_process:
         log("[run] Processing messages in chronological order (oldest to newest)")
+    else:
+        log(f"[run] No eligible messages to process (fetched={fetched})")
     report(
         "processing",
         detail=f"Processing 0/{to_process}",
@@ -259,15 +289,8 @@ def run_once(
         },
     )
 
-    for index, mail in enumerate(loaded_mails, start=1):
+    for index, mail in enumerate(eligible_mails, start=1):
         try:
-            # Safety guard: never label drafts, and never label mails sent by ourselves.
-            if "DRAFT" in {lbl.upper() for lbl in mail.label_ids}:
-                continue
-            from_addr = _normalized_address(mail.from_email)
-            if own_email and from_addr == own_email:
-                continue
-
             process_message(
                 client,
                 mail,
@@ -282,7 +305,11 @@ def run_once(
 
             ts = getattr(mail, "internal_date_ms", None)
             if ts is not None:
-                latest_ts = ts if latest_ts is None else max(latest_ts, ts)
+                if latest_ts is None or ts > latest_ts:
+                    latest_ts = ts
+                    latest_ids_at_ts = {mail.message_id}
+                elif ts == latest_ts:
+                    latest_ids_at_ts.add(mail.message_id)
 
         except Exception as e:
             errors += 1
@@ -313,6 +340,7 @@ def run_once(
     report("save_state", detail="Saving state")
     if latest_ts is not None:
         st.last_internal_date_ms = latest_ts
+        st.last_message_ids_at_latest_ts = sorted(latest_ids_at_ts)
     st.runs += 1
 
     save_state(state_path, st)

@@ -276,13 +276,57 @@ ul {
   animation-delay: 0.16s;
 }
 
-.console {
-  background: #111;
-  color: #eee;
-  padding: 12px;
-  border-radius: 12px;
-  max-height: 200px;
+.action-list {
+  display: grid;
+  gap: 10px;
+  max-height: 280px;
   overflow-y: auto;
-  font-family: monospace;
-  font-size: 0.9rem;
+}
+
+.action-card {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 10px 12px;
+  background: #faf9f6;
+  display: grid;
+  gap: 6px;
+}
+
+.action-label {
+  border-left: 4px solid #0f6fff;
+}
+
+.action-draft {
+  border-left: 4px solid #ff7a1a;
+}
+
+.action-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.action-primary {
+  font-weight: 600;
+}
+
+.action-secondary {
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.action-badges {
+  display: inline-flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.action-badge {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 0.76rem;
+  color: var(--muted);
+  background: #fff;
 }
