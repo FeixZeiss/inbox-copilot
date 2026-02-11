@@ -1,4 +1,4 @@
-.PHONY: setup run
+.PHONY: setup setup-dev run lint test check
 
 setup:
 	@echo "Installing Python dependencies..."
@@ -12,5 +12,20 @@ setup:
 	fi
 	@echo "If you need API keys, edit .env in the project root."
 
+setup-dev: setup
+	@echo "Installing dev tooling (ruff + pytest)..."
+	python3 -m pip install -e ".[dev]"
+	@echo "Installing frontend dependencies..."
+	npm --prefix frontend install
+
 run:
 	@bash -c "source setup.sh && python3 scripts/run_once.py"
+
+lint:
+	python3 -m ruff check backend src scripts tests
+	npm --prefix frontend run lint
+
+test:
+	python3 -m pytest -q
+
+check: lint test

@@ -1,6 +1,13 @@
 openai<2.0.0,>=1.50.0
+fastapi<1.0.0,>=0.115.0
+uvicorn<1.0.0,>=0.30.0
 python-dotenv
 google-api-python-client
 google-auth
 google-auth-oauthlib
 google-auth-httplib2
+python-multipart
+
+[dev]
+pytest<9.0.0,>=8.0.0
+ruff<1.0.0,>=0.6.0

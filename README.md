@@ -89,6 +89,11 @@ Or use the Makefile:
 ```bash
 make setup
 ```
+
+Developer setup (includes lint + test tooling):
+```bash
+make setup-dev
+```
 ## ▶️ Running the Project
 ```bash
 python scripts/run_once.py
@@ -98,6 +103,23 @@ Or with Make:
 make run
 ```
 `make run` will source `setup.sh` automatically.
+
+## ✅ Quality Checks
+Run all quality checks locally:
+```bash
+make check
+```
+
+Or run each step explicitly:
+```bash
+python -m ruff check backend src scripts tests
+python -m pytest -q
+npm --prefix frontend run lint
+npm --prefix frontend run build
+```
+
+CI runs the same checks automatically on every push and pull request
+via `.github/workflows/ci.yml`.
 
 ## 🌐 Frontend (React + Vite)
 The frontend lives in `frontend/` and is served by the FastAPI backend after building.

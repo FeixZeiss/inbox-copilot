@@ -4,8 +4,14 @@ Version: 0.1.0
 Summary: Local-first Gmail inbox automation with rule-based and AI-assisted classification
 Requires-Python: >=3.10
 Requires-Dist: openai<2.0.0,>=1.50.0
+Requires-Dist: fastapi<1.0.0,>=0.115.0
+Requires-Dist: uvicorn<1.0.0,>=0.30.0
 Requires-Dist: python-dotenv
 Requires-Dist: google-api-python-client
 Requires-Dist: google-auth
 Requires-Dist: google-auth-oauthlib
 Requires-Dist: google-auth-httplib2
+Requires-Dist: python-multipart
+Provides-Extra: dev
+Requires-Dist: pytest<9.0.0,>=8.0.0; extra == "dev"
+Requires-Dist: ruff<1.0.0,>=0.6.0; extra == "dev"
