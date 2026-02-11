@@ -4,6 +4,7 @@ import json
 import re
 from datetime import datetime, timezone
 from email.message import EmailMessage
+from email.utils import parseaddr
 from pathlib import Path
 from typing import Any
 
@@ -99,6 +100,20 @@ def _extract_contact_name(data: dict[str, Any]) -> str | None:
         flags=re.IGNORECASE,
     )
     return display or None
+
+
+def _extract_recipient_display(data: dict[str, Any]) -> str:
+    raw_value = str(data.get("source_from") or "").strip()
+    if not raw_value:
+        return ""
+    display_name, address = parseaddr(raw_value)
+    display_name = display_name.strip()
+    address = address.strip()
+    if display_name and address:
+        return f"{display_name} <{address}>"
+    if address:
+        return address
+    return raw_value
 
 
 def _personalize_salutation(body: str, data: dict[str, Any]) -> str:
@@ -239,12 +254,41 @@ def _generate_draft_with_openai(client: OpenAI, data: dict[str, Any]) -> tuple[s
 
 
 def _push_recent_action(action: dict[str, Any], detail: str) -> None:
-    current = run_status_store.snapshot().get("recent_actions", [])
+    snapshot = run_status_store.snapshot()
+    current = snapshot.get("recent_actions", [])
     run_status_store.update(
-        state="running",
-        step="drafts",
+        state=snapshot.get("state", "running"),
+        step=snapshot.get("step", "drafts"),
         detail=detail,
         recent_actions=[action] + current[:49],
+    )
+
+
+def _push_draft_summary(
+    *,
+    detail: str,
+    dry_run: bool,
+    total_files: int,
+    eligible: int,
+    created: int,
+    dry_run_count: int,
+    skipped_existing: int,
+    errors: int,
+    using_openai: bool,
+) -> None:
+    _push_recent_action(
+        {
+            "type": "draft_summary",
+            "mode": "dry_run" if dry_run else "created",
+            "total_files": total_files,
+            "eligible": eligible,
+            "created": created,
+            "dry_run_count": dry_run_count,
+            "skipped_existing": skipped_existing,
+            "errors": errors,
+            "using_openai": using_openai,
+        },
+        detail=detail,
     )
 
 
@@ -257,8 +301,6 @@ def create_drafts(payload: DraftsRequest) -> dict[str, Any]:
         state="running",
         step="drafts",
         detail="Preparing draft creation",
-        recent_actions=[],
-        recent_errors=[],
     )
 
     if not interviews_dir.exists():
@@ -270,7 +312,19 @@ def create_drafts(payload: DraftsRequest) -> dict[str, Any]:
         if p.suffix == ".json" and not p.name.endswith(".draft.json")
     )
     if not json_files:
-        run_status_store.update(state="done", step="drafts", detail="No interview JSON files found")
+        detail = "No interview JSON files found"
+        run_status_store.update(state="done", step="drafts", detail=detail)
+        _push_draft_summary(
+            detail=detail,
+            dry_run=payload.dry_run,
+            total_files=0,
+            eligible=0,
+            created=0,
+            dry_run_count=0,
+            skipped_existing=0,
+            errors=0,
+            using_openai=False,
+        )
         return {
             "ok": True,
             "summary": {
@@ -296,10 +350,18 @@ def create_drafts(payload: DraftsRequest) -> dict[str, Any]:
         candidate_files.append(json_path)
 
     if not candidate_files:
-        run_status_store.update(
-            state="done",
-            step="drafts",
-            detail=f"No new draft candidates (skipped {skipped_existing} existing markers)",
+        detail = f"No new draft candidates (skipped {skipped_existing} existing markers)"
+        run_status_store.update(state="done", step="drafts", detail=detail)
+        _push_draft_summary(
+            detail=detail,
+            dry_run=payload.dry_run,
+            total_files=len(json_files),
+            eligible=0,
+            created=0,
+            dry_run_count=0,
+            skipped_existing=skipped_existing,
+            errors=0,
+            using_openai=False,
         )
         return {
             "ok": True,
@@ -378,22 +440,9 @@ def create_drafts(payload: DraftsRequest) -> dict[str, Any]:
                 subject = _build_subject(data)
                 body = _build_body(data)
 
-            action_base = {
-                "type": "draft",
-                "source_file": json_path.name,
-                "subject": subject,
-                "using_openai": bool(openai_client),
-            }
-
+            recipient = _extract_recipient_display(data)
             if payload.dry_run:
                 dry_run_count += 1
-                _push_recent_action(
-                    {
-                        **action_base,
-                        "mode": "dry_run",
-                    },
-                    detail=f"Dry run draft: {json_path.name}",
-                )
                 continue
 
             msg = EmailMessage()
@@ -418,11 +467,14 @@ def create_drafts(payload: DraftsRequest) -> dict[str, Any]:
             created += 1
             _push_recent_action(
                 {
-                    **action_base,
+                    "type": "draft",
                     "mode": "created",
-                    "draft_id": marker_payload.get("draft_id"),
+                    "to": recipient,
+                    "subject": subject,
+                    "source_file": json_path.name,
+                    "using_openai": bool(openai_client),
                 },
-                detail=f"Created draft: {json_path.name}",
+                detail=f"Draft created: {json_path.name}",
             )
         except HTTPException:
             raise
@@ -448,6 +500,17 @@ def create_drafts(payload: DraftsRequest) -> dict[str, Any]:
         state="done",
         step="drafts",
         detail="Draft creation completed",
+    )
+    _push_draft_summary(
+        detail="Draft creation completed",
+        dry_run=payload.dry_run,
+        total_files=total_files,
+        eligible=eligible,
+        created=created,
+        dry_run_count=dry_run_count,
+        skipped_existing=skipped_existing,
+        errors=errors,
+        using_openai=bool(openai_client),
     )
 
     return {

@@ -12,21 +12,22 @@ function formatCount(value) {
 }
 
 function getRecentActionView(action) {
+  if (action?.type === "draft_summary") {
+    return null;
+  }
+
   if (action?.type === "draft") {
-    const mode = action.mode === "created"
-      ? "Draft created"
-      : action.mode === "skipped_existing"
-        ? "Skipped (existing marker)"
-        : "Dry run";
-    const engine = action.using_openai ? "OpenAI" : "Template";
+    const recipient = action.to || "-";
+    const subject = action.subject || "-";
     return {
-      kind: "draft",
-      title: mode,
-      primary: action.subject || action.source_file || action.message_id || "Draft action",
-      secondary: action.source_file ? `Source: ${action.source_file}` : null,
-      badges: [engine, action.draft_id ? `Draft ID ${action.draft_id}` : null].filter(Boolean),
+      kind: "label",
+      title: "Draft created",
+      primary: `An: ${recipient}`,
+      secondary: `Betreff: ${subject}`,
+      badges: [],
     };
   }
+
   return {
     kind: "label",
     title: "Label applied",
@@ -50,7 +51,8 @@ export default function App() {
   const [oauthMessage, setOauthMessage] = useState("");
   const [oauthUrl, setOauthUrl] = useState("");
   const [draftDryRun, setDraftDryRun] = useState(true);
-  const [draftMessage, setDraftMessage] = useState("");
+  const [draftSummary, setDraftSummary] = useState(null);
+  const [lastSummaryAt, setLastSummaryAt] = useState(null);
   const [activeJob, setActiveJob] = useState(null);
   const [logs, setLogs] = useState([])
 
@@ -88,17 +90,23 @@ export default function App() {
 
   const metrics = useMemo(() => {
     // Merge live metrics with the last summary for a stable display.
-    if (!summary && !statusInfo?.metrics) {
+    if (!summary && !statusInfo?.metrics && !draftSummary) {
       return null;
     }
     const current = statusInfo?.metrics || {};
+    const processedLabels = summary?.processed ?? current.processed;
+    const processedDrafts = draftSummary
+      ? (draftSummary.created ?? 0) + (draftSummary.dry_run ?? 0)
+      : 0;
+    const errorsTotal = (summary?.errors ?? current.errors ?? 0)
+      + (draftSummary?.errors ?? 0);
     return [
-      { label: "Processed", value: summary?.processed ?? current.processed },
+      { label: "Processed Labels", value: processedLabels },
+      { label: "Processed Drafts", value: processedDrafts },
       { label: "Seen", value: summary?.message_ids_seen ?? current.message_ids_seen },
-      { label: "Skipped", value: summary?.skipped_deleted ?? current.skipped_deleted },
-      { label: "Errors", value: summary?.errors ?? current.errors },
+      { label: "Errors", value: errorsTotal },
     ];
-  }, [summary, statusInfo]);
+  }, [summary, statusInfo, draftSummary]);
 
   useEffect(() => {
     // Initial load: fetch baseline status and secrets once.
@@ -134,7 +142,6 @@ export default function App() {
     setActiveJob("run");
     setSummary(null);
     setError("");
-    setDraftMessage("");
     fetchStatus();
 
     try {
@@ -148,6 +155,7 @@ export default function App() {
       }
       // Store the final summary so the UI can show totals.
       setSummary(payload.summary || null);
+      setLastSummaryAt(Date.now());
       setStatus(STATUS.done);
       setActiveJob(null);
       fetchStatus();
@@ -162,7 +170,6 @@ export default function App() {
     setStatus(STATUS.running);
     setActiveJob("drafts");
     setError("");
-    setDraftMessage("");
     fetchStatus();
 
     try {
@@ -200,12 +207,8 @@ export default function App() {
         throw new Error("Backend returned ok=false");
       }
 
-      const s = payload.summary || {};
-      const modeLabel = payload.dry_run ? "dry-run" : "real run";
-      const engine = payload.used_openai ? "OpenAI" : "template mode";
-      setDraftMessage(
-        `Drafts finished (${modeLabel}, ${engine}): eligible=${s.eligible ?? 0}, created=${s.created ?? 0}, dry_run=${s.dry_run ?? 0}, skipped_existing=${s.skipped_existing ?? 0}, errors=${s.errors ?? 0}.`
-      );
+      setDraftSummary(payload.summary || null);
+      setLastSummaryAt(Date.now());
       setStatus(STATUS.done);
       setActiveJob(null);
       fetchStatus();
@@ -369,7 +372,6 @@ export default function App() {
             Status: <strong>{status}</strong>
             {statusInfo?.detail ? ` — ${statusInfo.detail}` : ""}
           </div>
-          {draftMessage && <div className="hint">{draftMessage}</div>}
         </div>
       </header>
 
@@ -378,8 +380,8 @@ export default function App() {
         <div className="panel-header">
           <h2>Last Run Summary</h2>
           <span className="timestamp">
-            {summary?.latest_internal_date_ms
-              ? new Date(summary.latest_internal_date_ms).toLocaleString()
+            {lastSummaryAt
+              ? new Date(lastSummaryAt).toLocaleString()
               : "No run yet"}
           </span>
         </div>
@@ -509,10 +511,13 @@ export default function App() {
         <div className="panel-header">
           <h2>Latest Actions</h2>
         </div>
-        {statusInfo?.recent_actions?.length ? (
+        {(statusInfo?.recent_actions || []).some((a) => getRecentActionView(a)) ? (
           <div className="action-list">
             {statusInfo.recent_actions.map((a, i) => {
               const view = getRecentActionView(a);
+              if (!view) {
+                return null;
+              }
               return (
                 <div key={`${view.kind}-${i}`} className={`action-card action-${view.kind}`}>
                   <div className="action-head">
