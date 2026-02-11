@@ -373,6 +373,20 @@ def main() -> None:
         print(f"[INFO] No JSON files in {interviews_dir}")
         return
 
+    skipped_existing = 0
+    if args.skip_existing:
+        candidate_files: list[Path] = []
+        for p in json_files:
+            if p.name.endswith(".draft.json"):
+                continue
+            if draft_marker_path(p).exists():
+                skipped_existing += 1
+                continue
+            candidate_files.append(p)
+        json_files = candidate_files
+        if skipped_existing:
+            print(f"[INFO] Skipped {skipped_existing} files with existing draft marker")
+
     cfg = load_gmail_config()
     client = GmailClient(cfg)
     client.connect()

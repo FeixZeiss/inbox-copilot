@@ -204,7 +204,7 @@ export default function App() {
       const modeLabel = payload.dry_run ? "dry-run" : "real run";
       const engine = payload.used_openai ? "OpenAI" : "template mode";
       setDraftMessage(
-        `Drafts finished (${modeLabel}, ${engine}): eligible=${s.eligible ?? 0}, created=${s.created ?? 0}, dry_run=${s.dry_run ?? 0}, errors=${s.errors ?? 0}.`
+        `Drafts finished (${modeLabel}, ${engine}): eligible=${s.eligible ?? 0}, created=${s.created ?? 0}, dry_run=${s.dry_run ?? 0}, skipped_existing=${s.skipped_existing ?? 0}, errors=${s.errors ?? 0}.`
       );
       setStatus(STATUS.done);
       setActiveJob(null);

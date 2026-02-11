@@ -257,12 +257,18 @@ def create_drafts(payload: DraftsRequest) -> dict[str, Any]:
         state="running",
         step="drafts",
         detail="Preparing draft creation",
+        recent_actions=[],
+        recent_errors=[],
     )
 
     if not interviews_dir.exists():
         raise HTTPException(status_code=400, detail=f"Missing directory: {interviews_dir}")
 
-    json_files = sorted(p for p in interviews_dir.iterdir() if p.suffix == ".json")
+    json_files = sorted(
+        p
+        for p in interviews_dir.iterdir()
+        if p.suffix == ".json" and not p.name.endswith(".draft.json")
+    )
     if not json_files:
         run_status_store.update(state="done", step="drafts", detail="No interview JSON files found")
         return {
@@ -272,6 +278,37 @@ def create_drafts(payload: DraftsRequest) -> dict[str, Any]:
                 "eligible": 0,
                 "created": 0,
                 "dry_run": 0,
+                "skipped_existing": 0,
+                "errors": 0,
+            },
+            "used_openai": False,
+            "dry_run": payload.dry_run,
+        }
+
+    # Fast pre-filter: skip files with existing marker before any JSON parsing/API calls.
+    skipped_existing = 0
+    candidate_files: list[Path] = []
+    for json_path in json_files:
+        marker_path = json_path.with_suffix(".draft.json")
+        if marker_path.exists():
+            skipped_existing += 1
+            continue
+        candidate_files.append(json_path)
+
+    if not candidate_files:
+        run_status_store.update(
+            state="done",
+            step="drafts",
+            detail=f"No new draft candidates (skipped {skipped_existing} existing markers)",
+        )
+        return {
+            "ok": True,
+            "summary": {
+                "total_files": len(json_files),
+                "eligible": 0,
+                "created": 0,
+                "dry_run": 0,
+                "skipped_existing": skipped_existing,
                 "errors": 0,
             },
             "used_openai": False,
@@ -305,35 +342,18 @@ def create_drafts(payload: DraftsRequest) -> dict[str, Any]:
             )
         openai_client = OpenAI(api_key=token)
 
-    total_files = 0
+    total_files = len(json_files)
     eligible = 0
     created = 0
     dry_run_count = 0
     errors = 0
 
-    for json_path in json_files:
-        if json_path.name.endswith(".draft.json"):
-            continue
-        total_files += 1
+    for json_path in candidate_files:
         try:
             data = json.loads(json_path.read_text(encoding="utf-8"))
             if data.get("status") != "interview":
                 continue
             data = _hydrate_source_context(gmail, data)
-
-            marker_path = json_path.with_suffix(".draft.json")
-            if marker_path.exists():
-                _push_recent_action(
-                    {
-                        "type": "draft",
-                        "mode": "skipped_existing",
-                        "source_file": json_path.name,
-                        "subject": "",
-                        "using_openai": bool(openai_client),
-                    },
-                    detail=f"Skipped existing draft marker: {json_path.name}",
-                )
-                continue
 
             eligible += 1
             if openai_client:
@@ -390,6 +410,7 @@ def create_drafts(payload: DraftsRequest) -> dict[str, Any]:
             }
             # Safety guard: marker files are persisted only for real draft creation.
             if not payload.dry_run:
+                marker_path = json_path.with_suffix(".draft.json")
                 marker_path.write_text(
                     json.dumps(marker_payload, indent=2, ensure_ascii=True),
                     encoding="utf-8",
@@ -436,6 +457,7 @@ def create_drafts(payload: DraftsRequest) -> dict[str, Any]:
             "eligible": eligible,
             "created": created,
             "dry_run": dry_run_count,
+            "skipped_existing": skipped_existing,
             "errors": errors,
         },
         "used_openai": bool(openai_client),
